@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#0B2545">
 <title>CourtSide - Pickup & Map</title>
 <style>
 :root{--bg:#0B2545;--surface:#13315C;--surface2:#1D4ED8;--border:#1E40AF;--text:#F2F3F5;--dim:#94A3B8;
@@ -126,7 +128,6 @@ async function init(){
  userCap=window.claude&&window.claude.use?await window.claude.use('user').catch(()=>null):null;
  
  if(!db){
-  // Fallback local mock mode for web deployment / GitHub Pages
   courts=[
    {id:'1',name:'Cameron Park',type:'outdoor',hours:'Dawn-10pm',address:'Covina, CA',lat:34.0837,lng:-117.8872},
    {id:'2',name:'Kelley Park',type:'outdoor',hours:'6am-9pm',address:'West Covina, CA',lat:34.0689,lng:-117.9389}
@@ -301,7 +302,7 @@ function renderDetailOverlay(){
   if(db){try{await db.doc('ratings/'+c.id+'_'+myId).set(base);}catch(e){}}
  });
  document.getElementById('postCommentBtn').onclick=async()=>{
-  const t=document.getElementById('commentText').value.trim(); if(!t) return;
+  const t=document.getElementById('commentText'].value.trim(); if(!t) return;
   comments=[{userId:myId,text:t,createdAt:Date.now()},...comments];
   renderDetailOverlay();
   if(db){try{await db.collection('comments').add({courtId:c.id,userId:myId,text:t,createdAt:Date.now()});}catch(e){}}
