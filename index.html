@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#0B2545">
+<meta name="description" content="Find, rate, and report local basketball pickup games and courts.">
 <title>CourtSide - Pickup & Map</title>
 <style>
 :root{--bg:#0B2545;--surface:#13315C;--surface2:#1D4ED8;--border:#1E40AF;--text:#F2F3F5;--dim:#94A3B8;
@@ -126,7 +129,6 @@ async function init(){
  userCap=window.claude&&window.claude.use?await window.claude.use('user').catch(()=>null):null;
  
  if(!db){
-  // Fallback local mock mode for web deployment / GitHub Pages
   courts=[
    {id:'1',name:'Cameron Park',type:'outdoor',hours:'Dawn-10pm',address:'Covina, CA',lat:34.0837,lng:-117.8872},
    {id:'2',name:'Kelley Park',type:'outdoor',hours:'6am-9pm',address:'West Covina, CA',lat:34.0689,lng:-117.9389}
