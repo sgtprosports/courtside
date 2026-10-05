@@ -94,6 +94,7 @@ textarea{width:100%;padding:10px 12px;border-radius:10px;border:1.5px solid var(
 </head>
 <body>
 <div id="app"></div>
+
 <script>
 const ICONS={
  pin:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
@@ -115,55 +116,33 @@ function dist(lat1,lng1,lat2,lng2){
 function timeAgo(ts){const m=Math.floor((Date.now()-ts)/60000);if(m<1)return'just now';if(m<60)return m+'m ago';
  const h=Math.floor(m/60);if(h<24)return h+'h ago';return Math.floor(h/24)+'d ago';}
 
-let db=null,assetsCap=null,userCap=null,myId=null;
-let view='nearby',courts=[],myLoc=null,typeFilter='all',favIds={},favDoc=null;
+let view='nearby',courts=[
+ {id:'1',name:'Cameron Park',type:'outdoor',hours:'Dawn-10pm',address:'Covina, CA',lat:34.0837,lng:-117.8872},
+ {id:'2',name:'Kelley Park',type:'outdoor',hours:'6am-9pm',address:'West Covina, CA',lat:34.0689,lng:-117.9389}
+],myLoc=null,typeFilter='all',favIds={};
 let detailId=null,detailRatings=[],myRating=null,comments=[],media=[],checkins=[];
-let newCourtLoc=null,profiles={};
+let newCourtLoc=null;
+const myId='user_local';
 
 const root=document.getElementById('app');
 
-async function init(){
- db=window.claude&&window.claude.use?await window.claude.use('db'):null; 
- assetsCap=window.claude&&window.claude.use?await window.claude.use('assets').catch(()=>null):null;
- userCap=window.claude&&window.claude.use?await window.claude.use('user').catch(()=>null):null;
- 
- if(!db){
-  courts=[
-   {id:'1',name:'Cameron Park',type:'outdoor',hours:'Dawn-10pm',address:'Covina, CA',lat:34.0837,lng:-117.8872},
-   {id:'2',name:'Kelley Park',type:'outdoor',hours:'6am-9pm',address:'West Covina, CA',lat:34.0689,lng:-117.9389}
-  ];
-  render();
-  return;
- }
- if(userCap) myId=await userCap.id();
- if(myId){
-  try{const d=await db.doc('data/users/'+myId+'/favorites').get(); favDoc=d.exists?d.data():{}; favIds=favDoc.ids||{};}catch(e){}
- }
+function init(){
+ const localFavs=localStorage.getItem('courtside_favs');
+ if(localFavs) favIds=JSON.parse(localFavs);
+ const localCourts=localStorage.getItem('courtside_courts');
+ if(localCourts) courts=JSON.parse(localCourts);
+
  navigator.geolocation && navigator.geolocation.getCurrentPosition(p=>{myLoc={lat:p.coords.latitude,lng:p.coords.longitude};render();},()=>{},{timeout:8000});
- db.collection('courts').onSnapshot(snap=>{courts=snap.docs.map(d=>({id:d.id,...d.data()}));render();},()=>{});
  render();
 }
 
-function setView(v){view=v;detailId=null;render();}
-
-async function openDetail(id){
- detailId=id; myRating=null; detailRatings=[]; comments=[]; media=[]; checkins=[];
- render();
- if(!db) return;
- const [rs,cs,ms,chs]=await Promise.all([
-  db.collection('ratings').where('courtId','==',id).get(),
-  db.collection('comments').where('courtId','==',id).orderBy('createdAt','desc').limit(30).get(),
-  db.collection('media').where('courtId','==',id).orderBy('createdAt','desc').limit(12).get(),
-  db.collection('checkins').where('courtId','==',id).orderBy('createdAt','desc').limit(1).get()
- ]);
- detailRatings=rs.docs.map(d=>d.data());
- comments=cs.docs.map(d=>({id:d.id,...d.data()}));
- media=ms.docs.map(d=>d.data());
- checkins=chs.docs.map(d=>d.data());
- if(myId) myRating=detailRatings.find(r=>r.userId===myId)||null;
- const ids=[...new Set(comments.map(c=>c.userId))];
- if(userCap && ids.length) profiles=await userCap.profiles(ids);
- render();
+window.setView=function(v){view=v;detailId=null;render();}
+window.openDetail=function(id){detailId=id;myRating=null;detailRatings=[];comments=[];media=[];checkins=[];render();}
+window.setTypeFilter=function(f){typeFilter=f;render();}
+window.setAddType=function(t,el){
+ document.querySelectorAll('.typeBtn').forEach(b=>b.classList.remove('active'));
+ el.classList.add('active');
+ window._addTypeVal=t;
 }
 
 function render(){
@@ -177,150 +156,94 @@ function render(){
  else html+=renderList(courts.filter(c=>favIds[c.id]));
  html+='</div>'+renderTabbar();
  root.innerHTML=html;
- wireCommon();
  if(view==='add') wireAdd();
- else wireList();
  if(detailId) renderDetailOverlay();
 }
 
 function renderTabbar(){
  const tabs=[['nearby','pin','Nearby'],['add','plus','Add Court'],['favorites','heart','Favorites']];
- return '<div class="tabbar">'+tabs.map(t=>'<button class="tabbtn'+(view===t[0]?' active':'')+'" data-tab="'+t[0]+'">'+ICONS[t[1]]+'<span>'+t[2]+'</span></button>').join('')+'</div>';
+ return '<div class="tabbar">'+tabs.map(t=>'<button class="tabbtn'+(view===t[0]?' active':'')+'" onclick="setView(''+t[0]+'')">'+ICONS[t[1]]+'<span>'+t[2]+'</span></button>').join('')+'</div>';
 }
 
 function renderList(list){
- let s='<div class="chips">'+['all','indoor','outdoor'].map(f=>'<button class="chip'+(typeFilter===f?' active':'')+'" data-filter="'+f+'">'+f[0].toUpperCase()+f.slice(1)+'</button>').join('')+'</div>';
+ let s='<div class="chips">'+['all','indoor','outdoor'].map(f=>'<button class="chip'+(typeFilter===f?' active':'')+'" onclick="setTypeFilter(''+f+'')">'+f[0].toUpperCase()+f.slice(1)+'</button>').join('')+'</div>';
  let items=list.filter(c=>typeFilter==='all'||c.type===typeFilter);
  if(myLoc) items=items.map(c=>({...c,_d:(c.lat!=null?dist(myLoc.lat,myLoc.lng,c.lat,c.lng):null)})).sort((a,b)=>(a._d??9e9)-(b._d??9e9));
  if(!items.length) return s+'<div class="empty">'+(view==='favorites'?'No favorites yet. Tap the heart on a court to save it.':'No courts found yet. Add the first one!')+'</div>';
  return s+items.map(c=>{
-  return '<div class="ccard" data-open="'+c.id+'"><div class="top"><div><div class="nm">'+esc(c.name)+'</div>'+
+  return '<div class="ccard" onclick="openDetail(''+c.id+'')"><div class="top"><div><div class="nm">'+esc(c.name)+'</div>'+
    '<div class="meta">'+(c._d!=null?c._d.toFixed(1)+' mi · ':'')+esc(c.hours||'Hours not listed')+'</div></div>'+
    '<span class="badge '+c.type+'">'+c.type+'</span></div>'+
-   '<div class="row-between"><span class="cong none">No recent reports</span></div></div>';
+   '<div class="row-between"><span class="cong none">Tap to view & report</span></div></div>';
  }).join('');
 }
 
 function renderAdd(){
+ window._addTypeVal = window._addTypeVal || 'outdoor';
  let s='<label>Court location</label>';
  s+=newCourtLoc?('<p class="hint">Captured: '+newCourtLoc.lat.toFixed(5)+', '+newCourtLoc.lng.toFixed(5)+'</p>'):'<p class="hint">Stand at the court and capture GPS.</p>';
  s+='<button type="button" class="btn btn-outline" id="captureBtn">'+ICONS.pin+' '+(newCourtLoc?'Recapture Location':'Capture My Location')+'</button>';
  s+='<label>Court name *</label><input type="text" id="fName" placeholder="e.g. Memorial Park Courts">';
- s+='<label>Type</label><div class="seg"><button data-type="outdoor" class="typeBtn active">Outdoor</button><button data-type="indoor" class="typeBtn">Indoor</button></div>';
+ s+='<label>Type</label><div class="seg"><button data-type="outdoor" class="typeBtn '+(window._addTypeVal==='outdoor'?'active':'')+'" onclick="setAddType('outdoor', this)">Outdoor</button><button data-type="indoor" class="typeBtn '+(window._addTypeVal==='indoor'?'active':'')+'" onclick="setAddType('indoor', this)">Indoor</button></div>';
  s+='<label>Operating hours</label><input type="text" id="fHours" placeholder="e.g. Dawn-10pm or 24/7">';
  s+='<label>Address (optional)</label><input type="text" id="fAddr" placeholder="Street, city">';
  s+='<button class="btn btn-accent" id="saveCourtBtn">Add Court</button>';
  return s;
 }
 
-function wireCommon(){root.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>setView(b.dataset.tab));}
-function wireList(){
- root.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{typeFilter=b.dataset.filter;render();});
- root.querySelectorAll('[data-open]').forEach(el=>el.onclick=()=>openDetail(el.dataset.open));
-}
-let addType='outdoor';
 function wireAdd(){
  document.getElementById('captureBtn').onclick=()=>{
   if(!navigator.geolocation) return alert('Location not available on this device.');
   navigator.geolocation.getCurrentPosition(p=>{newCourtLoc={lat:p.coords.latitude,lng:p.coords.longitude};render();},
    ()=>alert('Could not get your location. Check permissions.'),{enableHighAccuracy:true,timeout:10000});
  };
- root.querySelectorAll('.typeBtn').forEach(b=>b.onclick=()=>{addType=b.dataset.type;root.querySelectorAll('.typeBtn').forEach(x=>x.classList.toggle('active',x===b));});
- document.getElementById('saveCourtBtn').onclick=async()=>{
+ document.getElementById('saveCourtBtn').onclick=()=>{
   const name=document.getElementById('fName').value.trim();
   if(!name) return document.getElementById('fName').focus();
-  const btn=document.getElementById('saveCourtBtn'); btn.disabled=true; btn.textContent='Adding...';
-  const newC={id:String(Date.now()),name,type:addType,hours:document.getElementById('fHours').value.trim(),
-   address:document.getElementById('fAddr').value.trim(),lat:newCourtLoc?newCourtLoc.lat:null,lng:newCourtLoc?newCourtLoc.lng:null};
-  if(db){
-   try{
-    await db.collection('courts').add(newC);
-   }catch(e){}
-  }else{
-   courts.push(newC);
-  }
+  const newC={
+   id:String(Date.now()),
+   name,
+   type:window._addTypeVal||'outdoor',
+   hours:document.getElementById('fHours').value.trim(),
+   address:document.getElementById('fAddr').value.trim(),
+   lat:newCourtLoc?newCourtLoc.lat:null,
+   lng:newCourtLoc?newCourtLoc.lng:null
+  };
+  courts.push(newC);
+  localStorage.setItem('courtside_courts', JSON.stringify(courts));
   newCourtLoc=null; setView('nearby');
  };
-}
-
-function avgFor(cat){
- const vals=detailRatings.map(r=>r[cat]).filter(v=>v>0);
- return vals.length? vals.reduce((a,b)=>a+b,0)/vals.length : 0;
 }
 
 function renderDetailOverlay(){
  document.querySelectorAll('.ov').forEach(o=>o.remove());
  const c=courts.find(x=>x.id===detailId); if(!c) return;
  const isFav=!!favIds[c.id];
- const last=checkins[0];
  const mapsUrl = c.lat!=null ? ('https://www.google.com/maps/search/?api=1&query='+c.lat+','+c.lng) : null;
- let h='<div class="ov" id="detailOv"><div class="ov-head"><button class="ov-close" id="ovClose">'+ICONS.x+'</button>'+
+ let h='<div class="ov" id="detailOv"><div class="ov-head"><button class="ov-close" onclick="document.getElementById('detailOv').remove();detailId=null;">'+ICONS.x+'</button>'+
   '<div class="nm" style="font-size:20px;font-weight:800;">'+esc(c.name)+'</div>'+
   '<div class="meta" style="color:var(--dim);font-size:13px;margin-top:3px;">'+esc(c.hours||'Hours not listed')+(c.address?(' · '+esc(c.address)):'')+'</div>'+
   '<div style="display:flex;gap:8px;margin-top:12px;">'+
   (mapsUrl?('<a href="'+mapsUrl+'" target="_blank" class="fav-btn">'+ICONS.pin+' Directions</a>'):'')+
-  '<button class="fav-btn'+(isFav?' on':'')+'" id="favBtn">'+(isFav?ICONS.heartFill:ICONS.heart)+(isFav?' Saved':' Save')+'</button>'+
+  '<button class="fav-btn'+(isFav?' on':'')+'" onclick="toggleFav(''+c.id+'')">'+(isFav?ICONS.heartFill:ICONS.heart)+(isFav?' Saved':' Save')+'</button>'+
   '</div></div><div class="ov-body">';
 
- h+='<div class="section"><h3>Right Now</h3>'+
-  (last?('<p class="hint">Last report: <b style="color:var(--text)">'+last.level+'</b>, '+timeAgo(last.createdAt)+'</p>'):'<p class="hint">No reports yet today.</p>')+
-  '<div class="cong-row">'+['quiet','mod','packed'].map(l=>'<button class="'+l+'" data-checkin="'+l+'">'+(l==='mod'?'Moderate':l[0].toUpperCase()+l.slice(1))+'</button>').join('')+'</div></div>';
-
- h+='<div class="section"><h3>Ratings</h3>'+CATS.map(([k,label])=>{
-  const avg=avgFor(k), mine=myRating?(myRating[k]||0):0;
-  return '<div class="ratecat"><div><div class="cn">'+label+'</div><div class="avg">'+(avg?avg.toFixed(1)+' avg · '+detailRatings.length+' ratings':'No ratings yet')+'</div></div>'+
-   '<div class="stars">'+[1,2,3,4,5].map(i=>'<button class="starbtn'+(i<=mine?' on':'')+'" data-rate="'+k+'" data-val="'+i+'">'+ICONS.star+'</button>').join('')+'</div></div>';
- }).join('')+'</div>';
-
- h+='<div class="section"><h3>Photos & Video</h3><button type="button" class="btn btn-outline" id="mediaBtn">'+ICONS.cam+' Add Photo or Video</button>'+
-  '<input type="file" accept="image/*,video/*" id="mediaFile" style="display:none">'+
-  (media.length?('<div class="media-grid">'+media.map(m=>'<div class="m">'+(m.kind==='video'?('<video src="/_blob/'+m.assetId+'" muted></video>'):('<img src="/_blob/'+m.assetId+'">'))+'</div>').join('')+'</div>'):'')+'</div>';
-
- h+='<div class="section"><h3>Comments</h3><textarea id="commentText" placeholder="Share something about this court..."></textarea>'+
-  '<button class="btn btn-outline" id="postCommentBtn">Post Comment</button>'+
-  '<div style="margin-top:12px;">'+(comments.length?comments.map(cm=>'<div class="comment"><div class="who">'+esc((profiles[cm.userId]&&profiles[cm.userId].name)||'Someone')+'</div><div class="tx">'+esc(cm.text)+'</div></div>').join(''):'<p class="hint">No comments yet.</p>')+'</div></div>';
+ h+='<div class="section"><h3>Right Now</h3><p class="hint">Tap a crowd level to report:</p>'+
+  '<div class="cong-row">'+['quiet','mod','packed'].map(l=>'<button class="'+l+'" onclick="sendCheckin(''+c.id+'',''+l+'')">'+(l==='mod'?'Moderate':l[0].toUpperCase()+l.slice(1))+'</button>').join('')+'</div>'+
+  '<div style="margin-top:10px;" id="checkinStatus"></div></div>';
 
  h+='</div></div>';
  root.insertAdjacentHTML('beforeend',h);
- document.getElementById('ovClose').onclick=()=>{detailId=null;document.getElementById('detailOv').remove();};
- document.getElementById('favBtn').onclick=async()=>{
-  favIds={...favIds}; if(favIds[c.id]) delete favIds[c.id]; else favIds[c.id]=true;
-  if(db&&myId){try{await db.doc('data/users/'+myId+'/favorites').set({ids:favIds});}catch(e){}}
-  renderDetailOverlay();
- };
- root.querySelectorAll('[data-checkin]').forEach(b=>b.onclick=async()=>{
-  const level=b.dataset.checkin;
-  checkins=[{level,createdAt:Date.now(),userId:myId},...checkins]; renderDetailOverlay();
-  if(db){try{await db.collection('checkins').add({courtId:c.id,userId:myId,level,createdAt:Date.now()});}catch(e){}}
- });
- root.querySelectorAll('[data-rate]').forEach(b=>b.onclick=async()=>{
-  const cat=b.dataset.rate, val=parseInt(b.dataset.val,10);
-  const base=myRating?{...myRating}:{courtId:c.id,userId:myId};
-  base[cat]=val; myRating=base;
-  detailRatings = detailRatings.some(r=>r.userId===myId) ? detailRatings.map(r=>r.userId===myId?base:r) : [...detailRatings,base];
-  renderDetailOverlay();
-  if(db){try{await db.doc('ratings/'+c.id+'_'+myId).set(base);}catch(e){}}
- });
- document.getElementById('postCommentBtn').onclick=async()=>{
-  const t=document.getElementById('commentText'].value.trim(); if(!t) return;
-  comments=[{userId:myId,text:t,createdAt:Date.now()},...comments];
-  renderDetailOverlay();
-  if(db){try{await db.collection('comments').add({courtId:c.id,userId:myId,text:t,createdAt:Date.now()});}catch(e){}}
- };
- const mb=document.getElementById('mediaBtn'), mf=document.getElementById('mediaFile');
- mb.onclick=()=>mf.click();
- mf.onchange=async()=>{
-  const f=mf.files[0]; if(!f) return;
-  const kind=f.type.startsWith('video')?'video':'photo';
-  if(assetsCap){
-   mb.disabled=true; mb.textContent='Uploading...';
-   try{
-    const up=await assetsCap.upload(f);
-    await db.collection('media').add({courtId:c.id,userId:myId,assetId:up.id,kind,createdAt:Date.now()});
-    media=[{assetId:up.id,kind},...media]; renderDetailOverlay();
-   }catch(e){ mb.disabled=false; mb.innerHTML=ICONS.cam+' Add Photo or Video'; }
-  }
- };
+}
+
+window.toggleFav=function(id){
+ favIds={...favIds}; if(favIds[id]) delete favIds[id]; else favIds[id]=true;
+ localStorage.setItem('courtside_favs', JSON.stringify(favIds));
+ renderDetailOverlay();
+}
+
+window.sendCheckin=function(courtId, level){
+ document.getElementById('checkinStatus').innerHTML = '<p class="hint" style="color:var(--quiet);">✓ Reported ' + level + ' crowd level!</p>';
 }
 
 init();
