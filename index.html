@@ -95,7 +95,23 @@ textarea{width:100%;padding:10px 12px;border-radius:10px;border:1.5px solid var(
 <body>
 <div id="app"></div>
 
-<script>
+<!-- Firebase SDKs -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, addDoc, getDocs, doc, setDoc, getDoc, onSnapshot, query, orderBy, limit, where } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDummyKeyForCourtSideApp12345",
+  authDomain: "courtside-app-prod.firebaseapp.com",
+  projectId: "courtside-app-prod",
+  storageBucket: "courtside-app-prod.appspot.com",
+  messagingSenderId: "123456789012",
+  appId: "1:123456789012:web:abcdef123456"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
 const ICONS={
  pin:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
  plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
@@ -116,149 +132,79 @@ function dist(lat1,lng1,lat2,lng2){
 function timeAgo(ts){const m=Math.floor((Date.now()-ts)/60000);if(m<1)return'just now';if(m<60)return m+'m ago';
  const h=Math.floor(m/60);if(h<24)return h+'h ago';return Math.floor(h/24)+'d ago';}
 
-let view='nearby',courts=[
- {id:'1',name:'Cameron Park',type:'outdoor',hours:'Dawn-10pm',address:'Covina, CA',lat:34.0837,lng:-117.8872},
- {id:'2',name:'Kelley Park',type:'outdoor',hours:'6am-9pm',address:'West Covina, CA',lat:34.0689,lng:-117.9389}
-],myLoc=null,typeFilter='all',favIds={};
+let view='nearby',courts=[],myLoc=null,typeFilter='all',favIds={};
 let detailId=null,detailRatings=[],myRating=null,comments=[],media=[],checkins=[];
 let newCourtLoc=null;
-const myId='user_local';
+const myId='user_' + Math.random().toString(36.substring(2, 9));
 
 const root=document.getElementById('app');
 
-function init(){
- try {
-  const localFavs=localStorage.getItem('courtside_favs');
-  if(localFavs) favIds=JSON.parse(localFavs);
-  const localCourts=localStorage.getItem('courtside_courts');
-  if(localCourts) courts=JSON.parse(localCourts);
- } catch(e){}
+async function init(){
+ const localFavs = localStorage.getItem('courtside_favs');
+ if(localFavs) favIds = JSON.parse(localFavs);
 
+ navigator.geolocation && navigator.geolocation.getCurrentPosition(p=>{myLoc={lat:p.coords.latitude,lng:p.coords.longitude};render();},()=>{},{timeout:8000});
+
+ onSnapshot(collection(db, 'courts'), (snap)=>{
+  courts = snap.docs.map(d=>({id:d.id, ...d.data()}));
+  if(courts.length === 0) {
+   addDoc(collection(db, 'courts'), {name:'Cameron Park', type:'outdoor', hours:'Dawn-10pm', address:'Covina, CA', lat:34.0837, lng:-117.8872, addedAt: Date.now()});
+   addDoc(collection(db, 'courts'), {name:'Kelley Park', type:'outdoor', hours:'6am-9pm', address:'West Covina, CA', lat:34.0689, lng:-117.9389, addedAt: Date.now()});
+  }
+  render();
+ }, (err)=>{
+  courts = [
+   {id:'1', name:'Cameron Park', type:'outdoor', hours:'Dawn-10pm', address:'Covina, CA', lat:34.0837, lng:-117.8872},
+   {id:'2', name:'Kelley Park', type:'outdoor', hours:'6am-9pm', address:'West Covina, CA', lat:34.0689, lng:-117.9389}
+  ];
+  render();
+ });
  render();
-
- if(navigator.geolocation){
-  navigator.geolocation.getCurrentPosition(p=>{
-   myLoc={lat:p.coords.latitude,lng:p.coords.longitude};
-   render();
-  },()=>{},{timeout:6000});
- }
 }
 
-window.setView=function(v){view=v;detailId=null;render();}
-window.openDetail=function(id){detailId=id;myRating=null;detailRatings=[];comments=[];media=[];checkins=[];render();}
-window.setTypeFilter=function(f){typeFilter=f;render();}
-window.setAddType=function(t,el){
- document.querySelectorAll('.typeBtn').forEach(b=>b.classList.remove('active'));
- el.classList.add('active');
- window._addTypeVal=t;
+window.setView = function(v){view=v;detailId=null;render();}
+
+window.openDetail = async function(id){
+ detailId=id; myRating=null; detailRatings=[]; comments=[]; media=[]; checkins=[];
+ render();
+ try {
+  const rSnap = await getDocs(query(collection(db, 'ratings'), where('courtId', '==', id)));
+  detailRatings = rSnap.docs.map(d=>d.data());
+  
+  const cSnap = await getDocs(query(collection(db, 'comments'), where('courtId', '==', id), orderBy('createdAt', 'desc'), limit(30)));
+  comments = cSnap.docs.map(d=>({id:d.id, ...d.data()}));
+  
+  const chSnap = await getDocs(query(collection(db, 'checkins'), where('courtId', '==', id), orderBy('createdAt', 'desc'), limit(1)));
+  checkins = chSnap.docs.map(d=>d.data());
+  
+  if(myId) myRating = detailRatings.find(r=>r.userId===myId)||null;
+ } catch(e) { console.log(e); }
+ render();
 }
 
 function render(){
- try {
-  let html='<div class="topbar"><div style="width:36px;height:42px;display:flex;align-items:center;justify-content:center;">' +
-   '<svg viewBox="0 0 500 600" width="32" height="38"><path d="M 250 30 C 350 30 430 50 450 70 L 450 280 C 450 380 370 480 250 560 C 130 480 50 380 50 280 L 50 70 C 70 50 150 30 250 30 Z" fill="#0B2545" stroke="#FFFFFF" stroke-width="8"/><rect x="175" y="85" width="150" height="100" rx="6" fill="none" stroke="#FFFFFF" stroke-width="4"/><ellipse cx="250" cy="205" rx="65" ry="18" fill="none" stroke="#EF233C" stroke-width="10"/><circle cx="250" cy="355" r="90" fill="#E85D04"/><line x1="160" y1="355" x2="340" y2="355" stroke="#2B0900" stroke-width="4"/></svg>' +
-   '</div><div><h1>COURTSIDE</h1><p>'+
-   (view==='nearby'?'Find courts near you':view==='add'?'Add a court you know':'Your saved courts')+'</p></div></div>'+
-   '<div class="content">';
-  if(view==='nearby') html+=renderList(courts);
-  else if(view==='add') html+=renderAdd();
-  else html+=renderList(courts.filter(c=>favIds[c.id]));
-  html+='</div>'+renderTabbar();
-  root.innerHTML=html;
-  if(view==='add') wireAdd();
-  if(detailId) renderDetailOverlay();
- } catch(err){
-  root.innerHTML='<div style="padding:20px;color:#F2F3F5;">Error loading app: '+err.message+'</div>';
- }
+ let html='<div class="topbar"><div style="width:36px;height:42px;display:flex;align-items:center;justify-content:center;">' +
+  '<svg viewBox="0 0 500 600" width="32" height="38"><path d="M 250 30 C 350 30 430 50 450 70 L 450 280 C 450 380 370 480 250 560 C 130 480 50 380 50 280 L 50 70 C 70 50 150 30 250 30 Z" fill="#0B2545" stroke="#FFFFFF" stroke-width="8"/><rect x="175" y="85" width="150" height="100" rx="6" fill="none" stroke="#FFFFFF" stroke-width="4"/><ellipse cx="250" cy="205" rx="65" ry="18" fill="none" stroke="#EF233C" stroke-width="10"/><circle cx="250" cy="355" r="90" fill="#E85D04"/><line x1="160" y1="355" x2="340" y2="355" stroke="#2B0900" stroke-width="4"/></svg>' +
+  '</div><div><h1>COURTSIDE</h1><p>'+
+  (view==='nearby'?'Find courts near you':view==='add'?'Add a court you know':'Your saved courts')+'</p></div></div>'+
+  '<div class="content">';
+ if(view==='nearby') html+=renderList(courts);
+ else if(view==='add') html+=renderAdd();
+ else html+=renderList(courts.filter(c=>favIds[c.id]));
+ html+='</div>'+renderTabbar();
+ root.innerHTML=html;
+ wireCommon();
+ if(view==='add') wireAdd();
+ else wireList();
+ if(detailId) renderDetailOverlay();
 }
 
 function renderTabbar(){
  const tabs=[['nearby','pin','Nearby'],['add','plus','Add Court'],['favorites','heart','Favorites']];
- return '<div class="tabbar">'+tabs.map(t=>'<button class="tabbtn'+(view===t[0]?' active':'')+'" onclick="setView(''+t[0]+'')">'+ICONS[t[1]]+'<span>'+t[2]+'</span></button>').join('')+'</div>';
+ return '<div class="tabbar">'+tabs.map(t=>'<button class="tabbtn'+(view===t[0]?' active':'')+'" onclick="setView(\''+t[0]+'\')">'+ICONS[t[1]]+'<span>'+t[2]+'</span></button>').join('')+'</div>';
 }
 
 function renderList(list){
- let s='<div class="chips">'+['all','indoor','outdoor'].map(f=>'<button class="chip'+(typeFilter===f?' active':'')+'" onclick="setTypeFilter(''+f+'')">'+f[0].toUpperCase()+f.slice(1)+'</button>').join('')+'</div>';
+ let s='<div class="chips">'+['all','indoor','outdoor'].map(f=>'<button class="chip'+(typeFilter===f?' active':'')+'" onclick="window.setTypeFilter(\''+f+'\')">'+f[0].toUpperCase()+f.slice(1)+'</button>').join('')+'</div>';
  let items=list.filter(c=>typeFilter==='all'||c.type===typeFilter);
- if(myLoc) items=items.map(c=>({...c,_d:(c.lat!=null?dist(myLoc.lat,myLoc.lng,c.lat,c.lng):null)})).sort((a,b)=>(a._d??9e9)-(b._d??9e9));
- if(!items.length) return s+'<div class="empty">'+(view==='favorites'?'No favorites yet. Tap the heart on a court to save it.':'No courts found yet. Add the first one!')+'</div>';
- return s+items.map(c=>{
-  return '<div class="ccard" onclick="openDetail(''+c.id+'')"><div class="top"><div><div class="nm">'+esc(c.name)+'</div>'+
-   '<div class="meta">'+(c._d!=null?c._d.toFixed(1)+' mi · ':'')+esc(c.hours||'Hours not listed')+'</div></div>'+
-   '<span class="badge '+c.type+'">'+c.type+'</span></div>'+
-   '<div class="row-between"><span class="cong none">Tap to view & report</span></div></div>';
- }).join('');
-}
-
-function renderAdd(){
- window._addTypeVal = window._addTypeVal || 'outdoor';
- let s='<label>Court location</label>';
- s+=newCourtLoc?('<p class="hint">Captured: '+newCourtLoc.lat.toFixed(5)+', '+newCourtLoc.lng.toFixed(5)+'</p>'):'<p class="hint">Stand at the court and capture GPS.</p>';
- s+='<button type="button" class="btn btn-outline" id="captureBtn">'+ICONS.pin+' '+(newCourtLoc?'Recapture Location':'Capture My Location')+'</button>';
- s+='<label>Court name *</label><input type="text" id="fName" placeholder="e.g. Memorial Park Courts">';
- s+='<label>Type</label><div class="seg"><button data-type="outdoor" class="typeBtn '+(window._addTypeVal==='outdoor'?'active':'')+'" onclick="setAddType('outdoor', this)">Outdoor</button><button data-type="indoor" class="typeBtn '+(window._addTypeVal==='indoor'?'active':'')+'" onclick="setAddType('indoor', this)">Indoor</button></div>';
- s+='<label>Operating hours</label><input type="text" id="fHours" placeholder="e.g. Dawn-10pm or 24/7">';
- s+='<label>Address (optional)</label><input type="text" id="fAddr" placeholder="Street, city">';
- s+='<button class="btn btn-accent" id="saveCourtBtn">Add Court</button>';
- return s;
-}
-
-function wireAdd(){
- document.getElementById('captureBtn').onclick=()=>{
-  if(!navigator.geolocation) return alert('Location not available on this device.');
-  navigator.geolocation.getCurrentPosition(p=>{newCourtLoc={lat:p.coords.latitude,lng:p.coords.longitude};render();},
-   ()=>alert('Could not get your location. Check permissions.'),{enableHighAccuracy:true,timeout:10000});
- };
- document.getElementById('saveCourtBtn').onclick=()=>{
-  const name=document.getElementById('fName').value.trim();
-  if(!name) return document.getElementById('fName').focus();
-  const newC={
-   id:String(Date.now()),
-   name,
-   type:window._addTypeVal||'outdoor',
-   hours:document.getElementById('fHours').value.trim(),
-   address:document.getElementById('fAddr').value.trim(),
-   lat:newCourtLoc?newCourtLoc.lat:null,
-   lng:newCourtLoc?newCourtLoc.lng:null
-  };
-  courts.push(newC);
-  try{ localStorage.setItem('courtside_courts', JSON.stringify(courts)); }catch(e){}
-  newCourtLoc=null; setView('nearby');
- };
-}
-
-function renderDetailOverlay(){
- document.querySelectorAll('.ov').forEach(o=>o.remove());
- const c=courts.find(x=>x.id===detailId); if(!c) return;
- const isFav=!!favIds[c.id];
- const mapsUrl = c.lat!=null ? ('https://www.google.com/maps/search/?api=1&query='+c.lat+','+c.lng) : null;
- let h='<div class="ov" id="detailOv"><div class="ov-head"><button class="ov-close" onclick="document.getElementById('detailOv').remove();detailId=null;">'+ICONS.x+'</button>'+
-  '<div class="nm" style="font-size:20px;font-weight:800;">'+esc(c.name)+'</div>'+
-  '<div class="meta" style="color:var(--dim);font-size:13px;margin-top:3px;">'+esc(c.hours||'Hours not listed')+(c.address?(' · '+esc(c.address)):'')+'</div>'+
-  '<div style="display:flex;gap:8px;margin-top:12px;">'+
-  (mapsUrl?('<a href="'+mapsUrl+'" target="_blank" class="fav-btn">'+ICONS.pin+' Directions</a>'):'')+
-  '<button class="fav-btn'+(isFav?' on':'')+'" onclick="toggleFav(''+c.id+'')">'+(isFav?ICONS.heartFill:ICONS.heart)+(isFav?' Saved':' Save')+'</button>'+
-  '</div></div><div class="ov-body">';
-
- h+='<div class="section"><h3>Right Now</h3><p class="hint">Tap a crowd level to report:</p>'+
-  '<div class="cong-row">'+['quiet','mod','packed'].map(l=>'<button class="'+l+'" onclick="sendCheckin(''+c.id+'',''+l+'')">'+(l==='mod'?'Moderate':l[0].toUpperCase()+l.slice(1))+'</button>').join('')+'</div>'+
-  '<div style="margin-top:10px;" id="checkinStatus"></div></div>';
-
- h+='</div></div>';
- root.insertAdjacentHTML('beforeend',h);
-}
-
-window.toggleFav=function(id){
- favIds={...favIds}; if(favIds[id]) delete favIds[id]; else favIds[id]=true;
- try{ localStorage.setItem('courtside_favs', JSON.stringify(favIds)); }catch(e){}
- renderDetailOverlay();
-}
-
-window.sendCheckin=function(courtId, level){
- document.getElementById('checkinStatus').innerHTML = '<p class="hint" style="color:var(--quiet);">✓ Reported ' + level + ' crowd level!</p>';
-}
-
-init();
-</script>
-</body>
-</html>
+ if(myLoc) items=items.map(c=>({...c,_d:(c.lat!=null?dist(myLoc.lat,myLoc.lng,c.lat,c
