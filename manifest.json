@@ -1,24 +1,21 @@
 {
-  "name": "CourtSide",
+  "name": "CourtSide - Pickup & Map",
   "short_name": "CourtSide",
   "start_url": "./index.html",
   "display": "standalone",
-  "orientation": "portrait",
   "background_color": "#0B2545",
   "theme_color": "#0B2545",
-  "description": "Discover local basketball courts, check in live, and find pickup games.",
+  "description": "Find, rate, and report local basketball pickup games and courts.",
   "icons": [
     {
-      "src": "icon-192.png",
+      "src": "./icon-192.png",
       "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "type": "image/png"
     },
     {
-      "src": "icon-512.png",
+      "src": "./icon-512.png",
       "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "type": "image/png"
     }
   ]
 }
