@@ -116,8 +116,8 @@ function dist(lat1,lng1,lat2,lng2){
 function timeAgo(ts){const m=Math.floor((Date.now()-ts)/60000);if(m<1)return'just now';if(m<60)return m+'m ago';
  const h=Math.floor(m/60);if(h<24)return h+'h ago';return Math.floor(h/24)+'d ago';}
 
-let db=null,assetsCap=null,userCap=null,myId=null;
-let view='nearby',courts=[],myLoc=null,typeFilter='all',favIds={},favDoc=null;
+let db=null,assetsCap=null,userCap=null,myId='local_user';
+let view='nearby',courts=[],myLoc=null,typeFilter='all',favIds={};
 let detailId=null,detailRatings=[],myRating=null,comments=[],media=[],checkins=[];
 let newCourtLoc=null,profiles={};
 
@@ -128,20 +128,24 @@ async function init(){
  assetsCap=window.claude&&window.claude.use?await window.claude.use('assets').catch(()=>null):null;
  userCap=window.claude&&window.claude.use?await window.claude.use('user').catch(()=>null):null;
  
- if(!db){
-  courts=[
-   {id:'1',name:'Cameron Park',type:'indoor',hours:'Dawn-10pm',address:'Covina, CA',lat:34.0837,lng:-117.8872},
-   {id:'2',name:'Kelley Park',type:'outdoor',hours:'6am-9pm',address:'West Covina, CA',lat:34.0689,lng:-117.9389}
-  ];
-  render();
-  return;
- }
- if(userCap) myId=await userCap.id();
- if(myId){
-  try{const d=await db.doc('data/users/'+myId+'/favorites').get(); favDoc=d.exists?d.data():{}; favIds=favDoc.ids||{};}catch(e){}
- }
+ const savedCourts=localStorage.getItem('sgt_courts');
+ courts=savedCourts?JSON.parse(savedCourts):[
+  {id:'1',name:'Cameron Park',type:'indoor',hours:'Dawn-10pm',address:'Covina, CA',lat:34.0837,lng:-117.8872},
+  {id:'2',name:'Kelley Park',type:'outdoor',hours:'6am-9pm',address:'West Covina, CA',lat:34.0689,lng:-117.9389}
+ ];
+
+ const savedFavs=localStorage.getItem('sgt_favs');
+ if(savedFavs) favIds=JSON.parse(savedFavs);
+
  navigator.geolocation && navigator.geolocation.getCurrentPosition(p=>{myLoc={lat:p.coords.latitude,lng:p.coords.longitude};render();},()=>{},{timeout:8000});
- db.collection('courts').onSnapshot(snap=>{courts=snap.docs.map(d=>({id:d.id,...d.data()}));render();},()=>{});
+ 
+ if(db){
+  db.collection('courts').onSnapshot(snap=>{
+   courts=snap.docs.map(d=>({id:d.id,...d.data()}));
+   localStorage.setItem('sgt_courts',JSON.stringify(courts));
+   render();
+  },()=>{});
+ }
  render();
 }
 
@@ -150,21 +154,34 @@ function setView(v){view=v;detailId=null;render();}
 async function openDetail(id){
  detailId=id; myRating=null; detailRatings=[]; comments=[]; media=[]; checkins=[];
  render();
- if(!db) return;
- const [rs,cs,ms,chs]=await Promise.all([
-  db.collection('ratings').where('courtId','==',id).get(),
-  db.collection('comments').where('courtId','==',id).orderBy('createdAt','desc').limit(30).get(),
-  db.collection('media').where('courtId','==',id).orderBy('createdAt','desc').limit(12).get(),
-  db.collection('checkins').where('courtId','==',id).orderBy('createdAt','desc').limit(1).get()
- ]);
- detailRatings=rs.docs.map(d=>d.data());
- comments=cs.docs.map(d=>({id:d.id,...d.data()}));
- media=ms.docs.map(d=>d.data());
- checkins=chs.docs.map(d=>d.data());
+ 
+ const savedRatings=localStorage.getItem('sgt_ratings_'+id);
+ if(savedRatings) detailRatings=JSON.parse(savedRatings);
+ const savedComments=localStorage.getItem('sgt_comments_'+id);
+ if(savedComments) comments=JSON.parse(savedComments);
+ const savedMedia=localStorage.getItem('sgt_media_'+id);
+ if(savedMedia) media=JSON.parse(savedMedia);
+ const savedCheckins=localStorage.getItem('sgt_checkins_'+id);
+ if(savedCheckins) checkins=JSON.parse(savedCheckins);
+
  if(myId) myRating=detailRatings.find(r=>r.userId===myId)||null;
- const ids=[...new Set(comments.map(c=>c.userId))];
- if(userCap && ids.length) profiles=await userCap.profiles(ids);
  render();
+
+ if(!db) return;
+ try{
+  const [rs,cs,ms,chs]=await Promise.all([
+   db.collection('ratings').where('courtId','==',id).get(),
+   db.collection('comments').where('courtId','==',id).orderBy('createdAt','desc').limit(30).get(),
+   db.collection('media').where('courtId','==',id).orderBy('createdAt','desc').limit(12).get(),
+   db.collection('checkins').where('courtId','==',id).orderBy('createdAt','desc').limit(1).get()
+  ]);
+  if(!rs.empty) detailRatings=rs.docs.map(d=>d.data());
+  if(!cs.empty) comments=cs.docs.map(d=>({id:d.id,...d.data()}));
+  if(!ms.empty) media=ms.docs.map(d=>d.data());
+  if(!chs.empty) checkins=chs.docs.map(d=>d.data());
+  if(myId) myRating=detailRatings.find(r=>r.userId===myId)||null;
+  render();
+ }catch(e){}
 }
 
 function render(){
@@ -233,13 +250,11 @@ function wireAdd(){
   const btn=document.getElementById('saveCourtBtn'); btn.disabled=true; btn.textContent='Adding...';
   const newC={id:String(Date.now()),name,type:addType,hours:document.getElementById('fHours').value.trim(),
    address:document.getElementById('fAddr').value.trim(),lat:newCourtLoc?newCourtLoc.lat:null,lng:newCourtLoc?newCourtLoc.lng:null};
-  if(db){
-   try{
-    await db.collection('courts').add(newC);
-   }catch(e){}
-  }else{
-   courts.push(newC);
-  }
+  
+  courts.push(newC);
+  localStorage.setItem('sgt_courts',JSON.stringify(courts));
+  if(db){try{await db.collection('courts').add(newC);}catch(e){}}
+
   newCourtLoc=null; setView('nearby');
  };
 }
@@ -302,23 +317,26 @@ function renderDetailOverlay(){
 
  h+='<div class="section"><h3>Photos & Video</h3><button type="button" class="btn btn-outline" id="mediaBtn">'+ICONS.cam+' Add Photo or Video</button>'+
   '<input type="file" accept="image/*,video/*" id="mediaFile" style="display:none">'+
-  (media.length?('<div class="media-grid">'+media.map(m=>'<div class="m">'+(m.kind==='video'?('<video src="/_blob/'+m.assetId+'" muted></video>'):('<img src="/_blob/'+m.assetId+'">'))+'</div>').join('')+'</div>'):'')+'</div>';
+  (media.length?('<div class="media-grid">'+media.map(m=>'<div class="m">'+(m.kind==='video'?('<video src="'+m.url+'" muted></video>'):('<img src="'+m.url+'">'))+'</div>').join('')+'</div>'):'')+'</div>';
 
  h+='<div class="section"><h3>Comments</h3><textarea id="commentText" placeholder="Share something about this court..."></textarea>'+
   '<button class="btn btn-outline" id="postCommentBtn">Post Comment</button>'+
-  '<div style="margin-top:12px;">'+(comments.length?comments.map(cm=>'<div class="comment"><div class="who">'+esc((profiles[cm.userId]&&profiles[cm.userId].name)||'Someone')+'</div><div class="tx">'+esc(cm.text)+'</div></div>').join(''):'<p class="hint">No comments yet.</p>')+'</div></div>';
+  '<div style="margin-top:12px;">'+(comments.length?comments.map(cm=>'<div class="comment"><div class="who">'+esc(cm.name||'Someone')+'</div><div class="tx">'+esc(cm.text)+'</div></div>').join(''):'<p class="hint">No comments yet.</p>')+'</div></div>';
 
  h+='</div></div>';
  root.insertAdjacentHTML('beforeend',h);
  document.getElementById('ovClose').onclick=()=>{detailId=null;document.getElementById('detailOv').remove();};
  document.getElementById('favBtn').onclick=async()=>{
   favIds={...favIds}; if(favIds[c.id]) delete favIds[c.id]; else favIds[c.id]=true;
-  if(db&&myId){try{await db.doc('data/users/'+myId+'/favorites').set({ids:favIds});}catch(e){}}
+  localStorage.setItem('sgt_favs',JSON.stringify(favIds));
   renderDetailOverlay();
  };
  root.querySelectorAll('[data-checkin]').forEach(b=>b.onclick=async()=>{
   const level=b.dataset.checkin;
-  checkins=[{level,createdAt:Date.now(),userId:myId},...checkins]; renderDetailOverlay();
+  const ch={level,createdAt:Date.now(),userId:myId};
+  checkins=[ch,...checkins];
+  localStorage.setItem('sgt_checkins_'+c.id,JSON.stringify(checkins));
+  renderDetailOverlay();
   if(db){try{await db.collection('checkins').add({courtId:c.id,userId:myId,level,createdAt:Date.now()});}catch(e){}}
  });
  root.querySelectorAll('[data-rate]').forEach(b=>b.onclick=async()=>{
@@ -326,12 +344,15 @@ function renderDetailOverlay(){
   const base=myRating?{...myRating}:{courtId:c.id,userId:myId};
   base[cat]=val; myRating=base;
   detailRatings = detailRatings.some(r=>r.userId===myId) ? detailRatings.map(r=>r.userId===myId?base:r) : [...detailRatings,base];
+  localStorage.setItem('sgt_ratings_'+c.id,JSON.stringify(detailRatings));
   renderDetailOverlay();
   if(db){try{await db.doc('ratings/'+c.id+'_'+myId).set(base);}catch(e){}}
  });
  document.getElementById('postCommentBtn').onclick=async()=>{
   const t=document.getElementById('commentText').value.trim(); if(!t) return;
-  comments=[{userId:myId,text:t,createdAt:Date.now()},...comments];
+  const cm={userId:myId,name:'You',text:t,createdAt:Date.now()};
+  comments=[cm,...comments];
+  localStorage.setItem('sgt_comments_'+c.id,JSON.stringify(comments));
   renderDetailOverlay();
   if(db){try{await db.collection('comments').add({courtId:c.id,userId:myId,text:t,createdAt:Date.now()});}catch(e){}}
  };
@@ -340,14 +361,21 @@ function renderDetailOverlay(){
  mf.onchange=async()=>{
   const f=mf.files[0]; if(!f) return;
   const kind=f.type.startsWith('video')?'video':'photo';
-  if(assetsCap){
-   mb.disabled=true; mb.textContent='Uploading...';
-   try{
-    const up=await assetsCap.upload(f);
-    await db.collection('media').add({courtId:c.id,userId:myId,assetId:up.id,kind,createdAt:Date.now()});
-    media=[{assetId:up.id,kind},...media]; renderDetailOverlay();
-   }catch(e){ mb.disabled=false; mb.innerHTML=ICONS.cam+' Add Photo or Video'; }
-  }
+  const reader=new FileReader();
+  reader.onload=async function(e){
+   const url=e.target.result;
+   const m={url,kind,createdAt:Date.now()};
+   media=[m,...media];
+   localStorage.setItem('sgt_media_'+c.id,JSON.stringify(media));
+   renderDetailOverlay();
+   if(assetsCap&&db){
+    try{
+     const up=await assetsCap.upload(f);
+     await db.collection('media').add({courtId:c.id,userId:myId,assetId:up.id,kind,createdAt:Date.now()});
+    }catch(e){}
+   }
+  };
+  reader.readAsDataURL(f);
  };
 }
 
