@@ -33,6 +33,7 @@ input:focus{outline:none;border-color:var(--accent);}
 .btn{width:100%;padding:13px;border-radius:11px;border:none;font-weight:800;font-size:15px;margin-top:14px;}
 .btn-accent{background:var(--accent);color:#FFFFFF;}
 .btn-outline{background:none;border:1.5px solid var(--border);color:var(--text);}
+.btn-danger{background:none;border:1.5px solid var(--accent);color:var(--accent);margin-top:10px;}
 .btn:disabled{opacity:.45;}
 .seg{display:flex;gap:6px;}
 .seg button{flex:1;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface);
@@ -323,6 +324,8 @@ function renderDetailOverlay(){
   '<button class="btn btn-outline" id="postCommentBtn">Post Comment</button>'+
   '<div style="margin-top:12px;">'+(comments.length?comments.map(cm=>'<div class="comment"><div class="who">'+esc(cm.name||'Someone')+'</div><div class="tx">'+esc(cm.text)+'</div></div>').join(''):'<p class="hint">No comments yet.</p>')+'</div></div>';
 
+ h+='<div class="section"><button class="btn btn-danger" id="deleteCourtBtn">Delete Court</button></div>';
+
  h+='</div></div>';
  root.insertAdjacentHTML('beforeend',h);
  document.getElementById('ovClose').onclick=()=>{detailId=null;document.getElementById('detailOv').remove();};
@@ -330,6 +333,17 @@ function renderDetailOverlay(){
   favIds={...favIds}; if(favIds[c.id]) delete favIds[c.id]; else favIds[c.id]=true;
   localStorage.setItem('sgt_favs',JSON.stringify(favIds));
   renderDetailOverlay();
+ };
+ document.getElementById('deleteCourtBtn').onclick=async()=>{
+  if(!confirm('Are you sure you want to delete this court?')) return;
+  courts=courts.filter(x=>x.id!==c.id);
+  localStorage.setItem('sgt_courts',JSON.stringify(courts));
+  localStorage.removeItem('sgt_ratings_'+c.id);
+  localStorage.removeItem('sgt_comments_'+c.id);
+  localStorage.removeItem('sgt_media_'+c.id);
+  localStorage.removeItem('sgt_checkins_'+c.id);
+  detailId=null;
+  render();
  };
  root.querySelectorAll('[data-checkin]').forEach(b=>b.onclick=async()=>{
   const level=b.dataset.checkin;
