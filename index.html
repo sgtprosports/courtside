@@ -263,6 +263,33 @@ function renderDetailOverlay(){
   '<button class="fav-btn'+(isFav?' on':'')+'" id="favBtn">'+(isFav?ICONS.heartFill:ICONS.heart)+(isFav?' Saved':' Save')+'</button>'+
   '</div></div><div class="ov-body">';
 
+ h+='<div class="hours-section" style="background: rgba(255,255,255,0.05); padding: 16px; border-radius: 12px; margin-bottom: 16px;">'+
+    '<h3 style="color: #F2F3F5; font-size: 16px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 6px;">Facility & Open Run Hours</h3>'+
+    '<div class="hours-grid" style="font-size: 13px; color: #D1D5DB; display: grid; gap: 8px;">'+
+        '<div style="display: flex; justify-content: space-between;"><span>Monday:</span> <span>6:00 AM – 10:00 PM (Open Run: 6:00 PM – 9:00 PM)</span></div>'+
+        '<div style="display: flex; justify-content: space-between;"><span>Tuesday:</span> <span>6:00 AM – 10:00 PM (Open Run: 6:00 PM – 9:00 PM)</span></div>'+
+        '<div style="display: flex; justify-content: space-between;"><span>Wednesday:</span> <span>6:00 AM – 10:00 PM (Open Run: 6:00 PM – 9:00 PM)</span></div>'+
+        '<div style="display: flex; justify-content: space-between;"><span>Thursday:</span> <span>6:00 AM – 10:00 PM (Open Run: 6:00 PM – 9:00 PM)</span></div>'+
+        '<div style="display: flex; justify-content: space-between;"><span>Friday:</span> <span>6:00 AM – 10:00 PM (Open Run: 5:00 PM – 9:00 PM)</span></div>'+
+        '<div style="display: flex; justify-content: space-between;"><span>Saturday:</span> <span>8:00 AM – 8:00 PM (Open Run: 9:00 AM – 2:00 PM)</span></div>'+
+        '<div style="display: flex; justify-content: space-between;"><span>Sunday:</span> <span>8:00 AM – 8:00 PM (Open Run: 10:00 AM – 2:00 PM)</span></div>'+
+    '</div>'+
+ '</div>';
+
+ h+='<div class="info-section" style="background: rgba(255,255,255,0.05); padding: 16px; border-radius: 12px; margin-bottom: 16px;">'+
+    '<h3 style="color: #F2F3F5; font-size: 16px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 6px;">Admission & Entry Requirements</h3>'+
+    '<div style="font-size: 14px; color: #D1D5DB; display: flex; flex-direction: column; gap: 10px;">'+
+        '<div style="display: flex; justify-content: space-between; align-items: center;">'+
+            '<span style="color: #94A3B8;">Court Entry Fee:</span>'+
+            '<span style="color: #4ADE80; font-weight: 600;">$5.00 / Resident ($7.00 Non-Resident)</span>'+
+        '</div>'+
+        '<div style="display: flex; justify-content: space-between; align-items: center;">'+
+            '<span style="color: #94A3B8;">ID Required:</span>'+
+            '<span id="id-status-badge" style="background: rgba(239, 35, 60, 0.2); color: #EF233C; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;">Required (Photo ID / Resident Card)</span>'+
+        '</div>'+
+    '</div>'+
+ '</div>';
+
  h+='<div class="section"><h3>Right Now</h3>'+
   (last?('<p class="hint">Last report: <b style="color:var(--text)">'+last.level+'</b>, '+timeAgo(last.createdAt)+'</p>'):'<p class="hint">No reports yet today.</p>')+
   '<div class="cong-row">'+['quiet','mod','packed'].map(l=>'<button class="'+l+'" data-checkin="'+l+'">'+(l==='mod'?'Moderate':l[0].toUpperCase()+l.slice(1))+'</button>').join('')+'</div></div>';
