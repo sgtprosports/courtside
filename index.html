@@ -7,8 +7,9 @@
 <meta name="theme-color" content="#0B2545">
 <meta name="description" content="Find, rate, and report local basketball pickup games and courts.">
 <title>CourtSide - Pickup & Map</title>
-<!-- Firebase SDK CDN (Compat Version for seamless Firestore integration) -->
+<!-- Firebase App (required) -->
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<!-- Firebase Firestore -->
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 <style>
 :root{--bg:#0B2545;--surface:#13315C;--surface2:#1D4ED8;--border:#1E40AF;--text:#F2F3F5;--dim:#94A3B8;
@@ -100,19 +101,6 @@ textarea{width:100%;padding:10px 12px;border-radius:10px;border:1.5px solid var(
 <body>
 <div id="app"></div>
 <script>
-// Initialize Firebase
-const firebaseConfig = {
-  apiKey: "AIzaSyCe0z1TZILlnCTaGDuSPLZrOx6oolv4paE",
-  authDomain: "sgtcourtside.firebaseapp.com",
-  projectId: "sgtcourtside",
-  storageBucket: "sgtcourtside.firebasestorage.app",
-  messagingSenderId: "790093701187",
-  appId: "1:790093701187:web:94564ef935391aafa174f6",
-  measurementId: "G-YFGNHT2EFN"
-};
-firebase.initializeApp(firebaseConfig);
-const firestore = firebase.firestore();
-
 const ICONS={
  pin:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
  plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
@@ -133,7 +121,7 @@ function dist(lat1,lng1,lat2,lng2){
 function timeAgo(ts){const m=Math.floor((Date.now()-ts)/60000);if(m<1)return'just now';if(m<60)return m+'m ago';
  const h=Math.floor(m/60);if(h<24)return h+'h ago';return Math.floor(h/24)+'d ago';}
 
-let myId='user_'+Math.random().toString(36.substring(2,9));
+let db=null,firestore=null,myId='user_'+Math.random().toString(36).substring(2,9);
 let view='nearby',courts=[],myLoc=null,typeFilter='all',favIds={};
 let detailId=null,detailRatings=[],myRating=null,comments=[],media=[],checkins=[];
 let newCourtLoc=null;
@@ -141,28 +129,56 @@ let newCourtLoc=null;
 const root=document.getElementById('app');
 
 async function init(){
+ // Initialize Firebase safely
+ try {
+  const firebaseConfig = {
+    apiKey: "AIzaSyCe0z1TZILlnCTaGDuSPLZrOx6oolv4paE",
+    authDomain: "sgtcourtside.firebaseapp.com",
+    projectId: "sgtcourtside",
+    storageBucket: "sgtcourtside.firebasestorage.app",
+    messagingSenderId: "790093701187",
+    appId: "1:790093701187:web:94564ef935391aafa174f6",
+    measurementId: "G-YFGNHT2EFN"
+  };
+  if(!firebase.apps.length) {
+   firebase.initializeApp(firebaseConfig);
+  }
+  firestore = firebase.firestore();
+ } catch(e) {
+  firestore = null;
+ }
+
  const savedFavs=localStorage.getItem('sgt_favs');
  if(savedFavs) favIds=JSON.parse(savedFavs);
 
  navigator.geolocation && navigator.geolocation.getCurrentPosition(p=>{myLoc={lat:p.coords.latitude,lng:p.coords.longitude};render();},()=>{},{timeout:8000});
  
- // Real-time sync with Firebase Firestore
- firestore.collection('courts').onSnapshot(snap=>{
-  courts=snap.docs.map(d=>({id:d.id,...d.data()}));
-  if(courts.length===0){
-   // Default starter courts if empty
-   const defaults=[
-    {id:'1',name:'Cameron Park',type:'indoor',hours:'Dawn-10pm',address:'Covina, CA',lat:34.0837,lng:-117.8872},
-    {id:'2',name:'Kelley Park',type:'outdoor',hours:'6am-9pm',address:'West Covina, CA',lat:34.0689,lng:-117.9389}
-   ];
-   defaults.forEach(c=>firestore.collection('courts').doc(c.id).set(c));
-  }
-  render();
- },()=>{
-  const savedCourts=localStorage.getItem('sgt_courts');
-  courts=savedCourts?JSON.parse(savedCourts):[];
-  render();
- });
+ if(firestore){
+  firestore.collection('courts').onSnapshot(snap=>{
+   courts=snap.docs.map(d=>({id:d.id,...d.data()}));
+   if(courts.length===0){
+    const defaults=[
+     {id:'1',name:'Cameron Park',type:'indoor',hours:'Dawn-10pm',address:'Covina, CA',lat:34.0837,lng:-117.8872},
+     {id:'2',name:'Kelley Park',type:'outdoor',hours:'6am-9pm',address:'West Covina, CA',lat:34.0689,lng:-117.9389}
+    ];
+    defaults.forEach(c=>firestore.collection('courts').doc(c.id).set(c));
+   }
+   render();
+  },()=>{
+   loadLocalCourts();
+  });
+ } else {
+  loadLocalCourts();
+ }
+ render();
+}
+
+function loadLocalCourts(){
+ const savedCourts=localStorage.getItem('sgt_courts');
+ courts=savedCourts?JSON.parse(savedCourts):[
+  {id:'1',name:'Cameron Park',type:'indoor',hours:'Dawn-10pm',address:'Covina, CA',lat:34.0837,lng:-117.8872},
+  {id:'2',name:'Kelley Park',type:'outdoor',hours:'6am-9pm',address:'West Covina, CA',lat:34.0689,lng:-117.9389}
+ ];
  render();
 }
 
@@ -172,31 +188,34 @@ async function openDetail(id){
  detailId=id; myRating=null; detailRatings=[]; comments=[]; media=[]; checkins=[];
  render();
 
- try{
-  const [rs,cs,ms,chs]=await Promise.all([
-   firestore.collection('ratings').where('courtId','==',id).get(),
-   firestore.collection('comments').where('courtId','==',id).orderBy('createdAt','desc').limit(30).get(),
-   firestore.collection('media').where('courtId','==',id).orderBy('createdAt','desc').limit(12).get(),
-   firestore.collection('checkins').where('courtId','==',id).orderBy('createdAt','desc').limit(1).get()
-  ]);
-  detailRatings=rs.docs.map(d=>d.data());
-  comments=cs.docs.map(d=>({id:d.id,...d.data()}));
-  media=ms.docs.map(d=>d.data());
-  checkins=chs.docs.map(d=>d.data());
-  if(myId) myRating=detailRatings.find(r=>r.userId===myId)||null;
-  render();
- }catch(e){
-  const savedRatings=localStorage.getItem('sgt_ratings_'+id);
-  if(savedRatings) detailRatings=JSON.parse(savedRatings);
-  const savedComments=localStorage.getItem('sgt_comments_'+id);
-  if(savedComments) comments=JSON.parse(savedComments);
-  const savedMedia=localStorage.getItem('sgt_media_'+id);
-  if(savedMedia) media=JSON.parse(savedMedia);
-  const savedCheckins=localStorage.getItem('sgt_checkins_'+id);
-  if(savedCheckins) checkins=JSON.parse(savedCheckins);
-  if(myId) myRating=detailRatings.find(r=>r.userId===myId)||null;
-  render();
+ if(firestore){
+  try{
+   const [rs,cs,ms,chs]=await Promise.all([
+    firestore.collection('ratings').where('courtId','==',id).get(),
+    firestore.collection('comments').where('courtId','==',id).orderBy('createdAt','desc').limit(30).get(),
+    firestore.collection('media').where('courtId','==',id).orderBy('createdAt','desc').limit(12).get(),
+    firestore.collection('checkins').where('courtId','==',id).orderBy('createdAt','desc').limit(1).get()
+   ]);
+   detailRatings=rs.docs.map(d=>d.data());
+   comments=cs.docs.map(d=>({id:d.id,...d.data()}));
+   media=ms.docs.map(d=>d.data());
+   checkins=chs.docs.map(d=>d.data());
+   if(myId) myRating=detailRatings.find(r=>r.userId===myId)||null;
+   render();
+   return;
+  }catch(e){}
  }
+ 
+ const savedRatings=localStorage.getItem('sgt_ratings_'+id);
+ if(savedRatings) detailRatings=JSON.parse(savedRatings);
+ const savedComments=localStorage.getItem('sgt_comments_'+id);
+ if(savedComments) comments=JSON.parse(savedComments);
+ const savedMedia=localStorage.getItem('sgt_media_'+id);
+ if(savedMedia) media=JSON.parse(savedMedia);
+ const savedCheckins=localStorage.getItem('sgt_checkins_'+id);
+ if(savedCheckins) checkins=JSON.parse(savedCheckins);
+ if(myId) myRating=detailRatings.find(r=>r.userId===myId)||null;
+ render();
 }
 
 function render(){
@@ -266,11 +285,10 @@ function wireAdd(){
   const newC={id:String(Date.now()),name,type:addType,hours:document.getElementById('fHours').value.trim(),
    address:document.getElementById('fAddr').value.trim(),lat:newCourtLoc?newCourtLoc.lat:null,lng:newCourtLoc?newCourtLoc.lng:null};
   
-  try{
-   await firestore.collection('courts').doc(newC.id).set(newC);
-  }catch(e){
-   courts.push(newC);
-   localStorage.setItem('sgt_courts',JSON.stringify(courts));
+  courts.push(newC);
+  localStorage.setItem('sgt_courts',JSON.stringify(courts));
+  if(firestore){
+   try{await firestore.collection('courts').doc(newC.id).set(newC);}catch(e){}
   }
 
   newCourtLoc=null; setView('nearby');
@@ -353,12 +371,13 @@ function renderDetailOverlay(){
  };
  document.getElementById('deleteCourtBtn').onclick=async()=>{
   if(!confirm('Are you sure you want to delete this court?')) return;
-  try{
-   await firestore.collection('courts').doc(c.id).delete();
-  }catch(e){
-   courts=courts.filter(x=>x.id!==c.id);
-   localStorage.setItem('sgt_courts',JSON.stringify(courts));
-  }
+  courts=courts.filter(x=>x.id!==c.id);
+  localStorage.setItem('sgt_courts',JSON.stringify(courts));
+  localStorage.removeItem('sgt_ratings_'+c.id);
+  localStorage.removeItem('sgt_comments_'+c.id);
+  localStorage.removeItem('sgt_media_'+c.id);
+  localStorage.removeItem('sgt_checkins_'+c.id);
+  if(firestore){try{await firestore.collection('courts').doc(c.id).delete();}catch(e){}}
   detailId=null;
   render();
  };
@@ -366,35 +385,26 @@ function renderDetailOverlay(){
   const level=b.dataset.checkin;
   const ch={courtId:c.id,level,createdAt:Date.now(),userId:myId};
   checkins=[ch,...checkins];
+  localStorage.setItem('sgt_checkins_'+c.id,JSON.stringify(checkins));
   renderDetailOverlay();
-  try{
-   await firestore.collection('checkins').add(ch);
-  }catch(e){
-   localStorage.setItem('sgt_checkins_'+c.id,JSON.stringify(checkins));
-  }
+  if(firestore){try{await firestore.collection('checkins').add(ch);}catch(e){}}
  });
  root.querySelectorAll('[data-rate]').forEach(b=>b.onclick=async()=>{
   const cat=b.dataset.rate, val=parseInt(b.dataset.val,10);
   const base=myRating?{...myRating}:{courtId:c.id,userId:myId};
   base[cat]=val; myRating=base;
   detailRatings = detailRatings.some(r=>r.userId===myId) ? detailRatings.map(r=>r.userId===myId?base:r) : [...detailRatings,base];
+  localStorage.setItem('sgt_ratings_'+c.id,JSON.stringify(detailRatings));
   renderDetailOverlay();
-  try{
-   await firestore.collection('ratings').doc(c.id+'_'+myId).set(base);
-  }catch(e){
-   localStorage.setItem('sgt_ratings_'+c.id,JSON.stringify(detailRatings));
-  }
+  if(firestore){try{await firestore.collection('ratings').doc(c.id+'_'+myId).set(base);}catch(e){}}
  });
  document.getElementById('postCommentBtn').onclick=async()=>{
   const t=document.getElementById('commentText').value.trim(); if(!t) return;
   const cm={courtId:c.id,userId:myId,name:'You',text:t,createdAt:Date.now()};
   comments=[cm,...comments];
+  localStorage.setItem('sgt_comments_'+c.id,JSON.stringify(comments));
   renderDetailOverlay();
-  try{
-   await firestore.collection('comments').add(cm);
-  }catch(e){
-   localStorage.setItem('sgt_comments_'+c.id,JSON.stringify(comments));
-  }
+  if(firestore){try{await firestore.collection('comments').add(cm);}catch(e){}}
  };
  const mb=document.getElementById('mediaBtn'), mf=document.getElementById('mediaFile');
  mb.onclick=()=>mf.click();
@@ -406,12 +416,9 @@ function renderDetailOverlay(){
    const url=e.target.result;
    const m={courtId:c.id,url,kind,createdAt:Date.now()};
    media=[m,...media];
+   localStorage.setItem('sgt_media_'+c.id,JSON.stringify(media));
    renderDetailOverlay();
-   try{
-    await firestore.collection('media').add(m);
-   }catch(e){
-    localStorage.setItem('sgt_media_'+c.id,JSON.stringify(media));
-   }
+   if(firestore){try{await firestore.collection('media').add(m);}catch(e){}}
   };
   reader.readAsDataURL(f);
  };
