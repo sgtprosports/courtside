@@ -183,16 +183,29 @@ function loadLocalCourts(){
 }
 
 function openHashCourt(){
- const m=/^#court=([\w-]+)/.exec(location.hash||'');
- if(m&&!detailId&&courts.some(c=>c.id===m[1])) openDetail(m[1]);
+ const cm=/^#court=([\w-]+)/.exec(location.hash||'');
+ if(cm&&!detailId&&courts.some(c=>c.id===cm[1])){
+  try{history.pushState({tab:view},'',location.pathname+location.search);}catch(e){}
+  openDetail(cm[1]);
+  return;
+ }
+ const tm=/^#(map|add|favorites)$/.exec(location.hash||'');
+ if(tm) goView(tm[1],false);
 }
 
-function setView(v){view=v;detailId=null;try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}render();}
+function tabUrl(v){return v==='nearby'?location.pathname+location.search:'#'+v;}
+function goView(v,push){
+ if(v===view&&!detailId) return;
+ view=v;detailId=null;
+ try{if(push===false)history.replaceState({tab:v},'',tabUrl(v));else history.pushState({tab:v},'',tabUrl(v));}catch(e){}
+ render();
+}
+function setView(v){goView(v,true);}
 
-async function openDetail(id){
+async function openDetail(id,noPush){
  detailId=id; myRating=null; detailRatings=[]; comments=[]; media=[]; checkins=[]; detailRuns=[];
  try{localStorage.setItem('sgt_seen_'+id,String(Date.now()));}catch(e){}
- try{history.replaceState(null,'','#court='+id);}catch(e){}
+ if(!noPush){try{history.pushState({detail:id,tab:view},'','#court='+id);}catch(e){}}
  render();
 
  if(firestore){
@@ -323,7 +336,7 @@ function wireAdd(){
    try{await firestore.collection('courts').doc(newC.id).set(newC);}catch(e){}
   }
 
-  newCourtLoc=null; setView('nearby');
+  newCourtLoc=null; goView('nearby',false);
  };
 }
 
@@ -406,7 +419,7 @@ function renderDetailOverlay(){
 
  h+='</div></div>';
  root.insertAdjacentHTML('beforeend',h);
- document.getElementById('ovClose').onclick=()=>{detailId=null;document.getElementById('detailOv').remove();try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}};
+ document.getElementById('ovClose').onclick=()=>{detailId=null;document.getElementById('detailOv').remove();try{history.replaceState({tab:view},'',tabUrl(view));}catch(e){}};
  document.getElementById('favBtn').onclick=async()=>{
   favIds={...favIds}; if(favIds[c.id]) delete favIds[c.id]; else favIds[c.id]=true;
   localStorage.setItem('sgt_favs',JSON.stringify(favIds));
@@ -573,6 +586,14 @@ async function refreshFavBadges(){
   }
  });
 }
+
+window.addEventListener('popstate',e=>{
+ const st=e.state||{};
+ if(st.detail){view=st.tab||view;openDetail(st.detail,true);return;}
+ detailId=null;view=st.tab||'nearby';render();
+ const cm=/^#court=([\w-]+)/.exec(location.hash||'');
+ if(cm&&courts.some(c=>c.id===cm[1])) openDetail(cm[1],true);
+});
 
 init();
 </script>
