@@ -250,6 +250,9 @@ function renderAdd(){
  s+='<label>Court name *</label><input type="text" id="fName" placeholder="e.g. Memorial Park Courts">';
  s+='<label>Type</label><div class="seg"><button data-type="outdoor" class="typeBtn active">Outdoor</button><button data-type="indoor" class="typeBtn">Indoor</button></div>';
  s+='<label>Operating hours</label><input type="text" id="fHours" placeholder="e.g. Dawn-10pm or 24/7">';
+ s+='<label>Detailed hours & open runs (optional)</label><textarea id="fHoursDetail" placeholder="e.g. Mon-Fri 6am-10pm, open runs 6-9pm"></textarea>';
+ s+='<label>Entry fee (optional)</label><input type="text" id="fFee" placeholder="e.g. $5 resident / $7 non-resident">';
+ s+='<label>Entry requirements (optional)</label><input type="text" id="fIdReq" placeholder="e.g. Photo ID required">';
  s+='<label>Address (optional)</label><input type="text" id="fAddr" placeholder="Street, city">';
  s+='<button class="btn btn-accent" id="saveCourtBtn">Add Court</button>';
  return s;
@@ -273,6 +276,8 @@ function wireAdd(){
   if(!name) return document.getElementById('fName').focus();
   const btn=document.getElementById('saveCourtBtn'); btn.disabled=true; btn.textContent='Adding...';
   const newC={id:String(Date.now()),name,type:addType,hours:document.getElementById('fHours').value.trim(),
+   hoursDetail:document.getElementById('fHoursDetail').value.trim(),
+   entryFee:document.getElementById('fFee').value.trim(),entryReq:document.getElementById('fIdReq').value.trim(),
    address:document.getElementById('fAddr').value.trim(),lat:newCourtLoc?newCourtLoc.lat:null,lng:newCourtLoc?newCourtLoc.lng:null};
   
   courts.push(newC);
@@ -306,34 +311,24 @@ function renderDetailOverlay(){
 
  h+='<div class="hours-section" style="background: rgba(255,255,255,0.05); padding: 16px; border-radius: 12px; margin-bottom: 16px;">'+
     '<h3 style="color: #F2F3F5; font-size: 16px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 6px;">Facility & Open Run Hours</h3>'+
-    '<div class="hours-grid" style="font-size: 13px; color: #D1D5DB; display: grid; gap: 8px;">'+
-        '<div style="display: flex; justify-content: space-between;"><span>Monday:</span> <span>6:00 AM – 10:00 PM (Open Run: 6:00 PM – 9:00 PM)</span></div>'+
-        '<div style="display: flex; justify-content: space-between;"><span>Tuesday:</span> <span>6:00 AM – 10:00 PM (Open Run: 6:00 PM – 9:00 PM)</span></div>'+
-        '<div style="display: flex; justify-content: space-between;"><span>Wednesday:</span> <span>6:00 AM – 10:00 PM (Open Run: 6:00 PM – 9:00 PM)</span></div>'+
-        '<div style="display: flex; justify-content: space-between;"><span>Thursday:</span> <span>6:00 AM – 10:00 PM (Open Run: 6:00 PM – 9:00 PM)</span></div>'+
-        '<div style="display: flex; justify-content: space-between;"><span>Friday:</span> <span>6:00 AM – 10:00 PM (Open Run: 5:00 PM – 9:00 PM)</span></div>'+
-        '<div style="display: flex; justify-content: space-between;"><span>Saturday:</span> <span>8:00 AM – 8:00 PM (Open Run: 9:00 AM – 2:00 PM)</span></div>'+
-        '<div style="display: flex; justify-content: space-between;"><span>Sunday:</span> <span>8:00 AM – 8:00 PM (Open Run: 10:00 AM – 2:00 PM)</span></div>'+
-    '</div>'+
+    (c.hoursDetail
+      ? '<div style="font-size: 13px; color: #D1D5DB; line-height: 1.6;">'+esc(c.hoursDetail).replace(/\n/g,'<br>')+'</div>'
+      : '<p class="hint">Not listed yet &mdash; be the first to add it.</p>')+
  '</div>';
 
  h+='<div class="info-section" style="background: rgba(255,255,255,0.05); padding: 16px; border-radius: 12px; margin-bottom: 16px;">'+
     '<h3 style="color: #F2F3F5; font-size: 16px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 6px;">Admission & Entry Requirements</h3>'+
-    '<div style="font-size: 14px; color: #D1D5DB; display: flex; flex-direction: column; gap: 10px;">'+
-        '<div style="display: flex; justify-content: space-between; align-items: center;">'+
+    ((c.entryFee||c.entryReq)
+      ? '<div style="font-size: 14px; color: #D1D5DB; display: flex; flex-direction: column; gap: 10px;">'+
+        (c.entryFee?'<div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">'+
             '<span style="color: #94A3B8;">Court Entry Fee:</span>'+
-            '<span style="color: #4ADE80; font-weight: 600;">$5.00 / Resident ($7.00 Non-Resident)</span>'+
-        '</div>'+
-        '<div style="display: flex; justify-content: space-between; align-items: center;">'+
-            '<span style="color: #94A3B8;">ID Required:</span>'+
-            '<span id="id-status-badge" style="background: rgba(239, 35, 60, 0.2); color: #EF233C; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;">Required (Photo ID / Resident Card)</span>'+
-        '</div>'+
-    '</div>'+
+            '<span style="color: #4ADE80; font-weight: 600; text-align: right;">'+esc(c.entryFee)+'</span></div>':'')+
+        (c.entryReq?'<div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">'+
+            '<span style="color: #94A3B8;">Entry Requirements:</span>'+
+            '<span style="color: #F2F3F5; font-weight: 600; text-align: right;">'+esc(c.entryReq)+'</span></div>':'')+
+        '</div>'
+      : '<p class="hint">Not listed yet &mdash; be the first to add it.</p>')+
  '</div>';
-
- h+='<div class="section"><h3>Right Now</h3>'+
-  (last?('<p class="hint">Last report: <b style="color:var(--text)">'+last.level+'</b>, '+timeAgo(last.createdAt)+'</p>'):'<p class="hint">No reports yet today.</p>')+
-  '<div class="cong-row">'+['quiet','mod','packed'].map(l=>'<button class="'+l+'" data-checkin="'+l+'">'+(l==='mod'?'Moderate':l[0].toUpperCase()+l.slice(1))+'</button>').join('')+'</div></div>';
 
  h+='<div class="section"><h3>Ratings</h3>'+CATS.map(([k,label])=>{
   const avg=avgFor(k), mine=myRating?(myRating[k]||0):0;
@@ -349,6 +344,8 @@ function renderDetailOverlay(){
   '<button class="btn btn-outline" id="postCommentBtn">Post Comment</button>'+
   '<div style="margin-top:12px;">'+(comments.length?comments.map(cm=>'<div class="comment"><div class="who">'+esc(cm.name||'Someone')+'</div><div class="tx">'+esc(cm.text)+'</div></div>').join(''):'<p class="hint">No comments yet.</p>')+'</div></div>';
 
+ h+='<div class="section"><button class="btn btn-outline" id="editInfoBtn">Edit court info</button></div>';
+
  h+='<div class="section"><button class="btn btn-danger" id="deleteCourtBtn">Delete Court</button></div>';
 
  h+='</div></div>';
@@ -359,6 +356,7 @@ function renderDetailOverlay(){
   localStorage.setItem('sgt_favs',JSON.stringify(favIds));
   renderDetailOverlay();
  };
+ document.getElementById('editInfoBtn').onclick=()=>renderEditInfo();
  document.getElementById('deleteCourtBtn').onclick=async()=>{
   if(!confirm('Are you sure you want to delete this court?')) return;
   courts=courts.filter(x=>x.id!==c.id);
@@ -411,6 +409,45 @@ function renderDetailOverlay(){
    if(firestore){try{await firestore.collection('media').add(m);}catch(e){}}
   };
   reader.readAsDataURL(f);
+ };
+}
+
+function renderEditInfo(){
+ const c=courts.find(x=>x.id===detailId); if(!c) return;
+ let h='<div class="ov" id="editOv"><div class="ov-head"><button class="ov-close" id="editClose">'+ICONS.x+'</button>'+
+  '<div class="nm" style="font-size:20px;font-weight:800;">Edit court info</div>'+
+  '<div class="meta" style="font-size:12px;color:var(--dim);margin-top:2px;">'+esc(c.name)+' &middot; anyone can keep this up to date</div></div><div class="ov-body">';
+ h+='<label>Court name *</label><input type="text" id="eName" value="'+esc(c.name)+'">';
+ h+='<label>Type</label><div class="seg"><button type="button" data-etype="outdoor" class="etypeBtn'+(c.type!=='indoor'?' active':'')+'">Outdoor</button><button type="button" data-etype="indoor" class="etypeBtn'+(c.type==='indoor'?' active':'')+'">Indoor</button></div>';
+ h+='<label>Operating hours</label><input type="text" id="eHours" value="'+esc(c.hours||'')+'" placeholder="e.g. Dawn-10pm or 24/7">';
+ h+='<label>Detailed hours & open runs</label><textarea id="eHoursDetail" placeholder="e.g. Mon-Fri 6am-10pm, open runs 6-9pm">'+esc(c.hoursDetail||'')+'</textarea>';
+ h+='<label>Address</label><input type="text" id="eAddr" value="'+esc(c.address||'')+'" placeholder="Street, city">';
+ h+='<label>Entry fee</label><input type="text" id="eFee" value="'+esc(c.entryFee||'')+'" placeholder="e.g. $5 resident / $7 non-resident">';
+ h+='<label>Entry requirements</label><input type="text" id="eIdReq" value="'+esc(c.entryReq||'')+'" placeholder="e.g. Photo ID required">';
+ h+='<div style="display:flex;gap:8px;"><button class="btn btn-accent" id="editSaveBtn" style="flex:1;">Save changes</button>'+
+    '<button class="btn btn-outline" id="editCancelBtn" style="flex:1;">Cancel</button></div>';
+ h+='</div></div>';
+ const old=document.getElementById('detailOv'); if(old) old.remove();
+ root.insertAdjacentHTML('beforeend',h);
+ let editType=c.type||'outdoor';
+ root.querySelectorAll('.etypeBtn').forEach(b=>b.onclick=()=>{editType=b.dataset.etype;root.querySelectorAll('.etypeBtn').forEach(x=>x.classList.toggle('active',x===b));});
+ const close=()=>{const e=document.getElementById('editOv'); if(e) e.remove(); renderDetailOverlay();};
+ document.getElementById('editClose').onclick=close;
+ document.getElementById('editCancelBtn').onclick=close;
+ document.getElementById('editSaveBtn').onclick=async()=>{
+  const name=document.getElementById('eName').value.trim();
+  if(!name) return document.getElementById('eName').focus();
+  const btn=document.getElementById('editSaveBtn'); btn.disabled=true; btn.textContent='Saving...';
+  const upd={name,type:editType,hours:document.getElementById('eHours').value.trim(),
+   hoursDetail:document.getElementById('eHoursDetail').value.trim(),
+   address:document.getElementById('eAddr').value.trim(),
+   entryFee:document.getElementById('eFee').value.trim(),
+   entryReq:document.getElementById('eIdReq').value.trim()};
+  Object.assign(c,upd);
+  localStorage.setItem('sgt_courts',JSON.stringify(courts));
+  if(firestore){try{await firestore.collection('courts').doc(c.id).update(upd);}catch(e){}}
+  const e=document.getElementById('editOv'); if(e) e.remove();
+  renderDetailOverlay();
  };
 }
 
