@@ -27,6 +27,17 @@ html,body{margin:0;background:var(--bg);color:var(--text);height:100%;
 .topbar{padding:16px 16px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;background:#071E3D;}
 .topbar h1{font-size:20px;font-weight:900;margin:0;letter-spacing:1px;}
 .topbar p{font-size:12px;color:var(--dim);margin:2px 0 0;}
+.prembtn{margin-left:auto;background:linear-gradient(135deg,#F5A623,#E85D04);border:none;color:#fff;font-weight:800;font-size:12.5px;padding:9px 14px;border-radius:999px;display:flex;align-items:center;gap:6px;}
+.prembtn svg{width:15px;height:15px;}
+.premcard{background:#0E2A52;border:1.5px solid #F5A623;border-radius:14px;padding:16px;margin:14px 0;}
+.premcard h4{margin:0 0 8px;color:#F5A623;font-size:16px;}
+.premfeat{display:flex;gap:10px;align-items:flex-start;margin:12px 0;font-size:13.5px;line-height:1.5;}
+.premfeat .ic{font-size:18px;line-height:1.3;}
+.premtag{display:inline-block;background:#F5A623;color:#2A1A05;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:999px;vertical-align:middle;margin-left:6px;}
+.featrow{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13.5px;font-weight:700;cursor:pointer;}
+.featrow input{width:18px;height:18px;accent-color:#F5A623;cursor:pointer;}
+.comment.runfeat{border-color:#F5A623;}
+
 .content{flex:1;padding:14px 14px 90px;overflow-y:auto;}
 .tabbar{position:fixed;left:0;right:0;bottom:0;max-width:520px;margin:0 auto;display:flex;
  background:#071E3D;border-top:1px solid var(--border);padding-bottom:env(safe-area-inset-bottom,0px);z-index:20;}
@@ -118,7 +129,8 @@ const ICONS={
  x:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>',
  cam:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>',
  share:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>',
- map:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>'
+ map:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>',
+ crown:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 7l4 4 5-6 5 6 4-4-1.6 10H4.6z"/><rect x="4" y="18" width="16" height="2.6" rx="1"/></svg>'
 };
 const CATS=[['floor','Floor'],['rim','Rim'],['net','Net'],['temp','Temperature'],['level','Level of Play'],
  ['lighting','Lighting'],['parking','Parking'],['vibe','Crowd Vibe']];
@@ -249,7 +261,7 @@ function render(){
  let html='<div class="topbar"><div style="width:36px;height:42px;display:flex;align-items:center;justify-content:center;">' +
   '<svg viewBox="0 0 500 600" width="32" height="38"><path d="M 250 30 C 350 30 430 50 450 70 L 450 280 C 450 380 370 480 250 560 C 130 480 50 380 50 280 L 50 70 C 70 50 150 30 250 30 Z" fill="#0B2545" stroke="#FFFFFF" stroke-width="8"/><rect x="175" y="85" width="150" height="100" rx="6" fill="none" stroke="#FFFFFF" stroke-width="4"/><ellipse cx="250" cy="205" rx="65" ry="18" fill="none" stroke="#EF233C" stroke-width="10"/><circle cx="250" cy="355" r="90" fill="#E85D04"/><line x1="160" y1="355" x2="340" y2="355" stroke="#2B0900" stroke-width="4"/></svg>' +
   '</div><div><h1>COURTSIDE</h1><p>'+
-  (view==='nearby'?'Find courts near you':view==='map'?'Browse the map':view==='add'?'Add a court you know':'Your saved courts')+'</p></div></div>'+
+  (view==='nearby'?'Find courts near you':view==='map'?'Browse the map':view==='add'?'Add a court you know':'Your saved courts')+'</p></div><button class="prembtn" id="premBtn">'+ICONS.crown+'<span>Premium</span></button></div>'+
   '<div class="content">';
  if(view==='nearby') html+=renderList();
  else if(view==='map') html+=renderMap();
@@ -308,7 +320,40 @@ function renderAdd(){
  return s;
 }
 
-function wireCommon(){root.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>setView(b.dataset.tab));}
+function wireCommon(){root.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>setView(b.dataset.tab));const pb=document.getElementById('premBtn');if(pb)pb.onclick=openPremium;}
+/* ===== CourtSide Premium (dormant until launch) ===== */
+const PREMIUM_LIVE=false; /* flip to true when Premium launches; real billing ships with the native package update */
+function isPremium(){try{return localStorage.getItem('sgt_premium')==='1';}catch(e){return false;}}
+function canFeature(){return PREMIUM_LIVE&&isPremium();}
+function openPremium(){
+ document.querySelectorAll('.ov').forEach(o=>o.remove());
+ const joined=(()=>{try{return localStorage.getItem('sgt_prem_wait')==='1';}catch(e){return false;}})();
+ let h='<div class="ov" id="premOv"><div class="ov-head"><button class="ov-close" id="premClose">'+ICONS.x+'</button>'+
+  '<div class="nm" style="font-size:20px;font-weight:800;">'+ICONS.crown+' CourtSide Premium</div>'+
+  '<div class="meta" style="color:var(--dim);font-size:13px;margin-top:3px;">More game, same courts</div></div><div class="ov-body">';
+ h+='<p class="hint">CourtSide is <b style="color:var(--text)">free forever</b> \u2014 find courts, check in, add courts, post runs, rate and comment. Premium is for hoopers who want that extra edge.</p>';
+ h+='<div class="section"><h3>Premium perks</h3>'+
+  '<div class="premfeat"><span class="ic">\uD83D\uDCCC</span><span><b>Feature your run</b> \u2014 pin it to the top of the court page so everyone sees your run first.</span></div>'+
+  '<div class="premfeat"><span class="ic">\uD83D\uDD14</span><span><b>Run alerts</b> \u2014 know the moment a run drops at your favorite courts. <span class="premtag">SOON</span></span></div>'+
+  '<div class="premfeat"><span class="ic">\uD83C\uDFC5</span><span><b>Founding Member badge</b> \u2014 a permanent badge on everything you post.</span></div>'+
+  '<div class="premfeat"><span class="ic">\u26A1</span><span><b>Early access</b> \u2014 try new features before anyone else.</span></div></div>';
+ h+='<div class="premcard"><h4>\uD83C\uDFC5 Founding Member \u00B7 Lifetime</h4>'+
+  '<p class="hint" style="color:#F5D9A8;">One payment. Premium forever. Founding members lock in the lowest price we will ever offer.</p>'+
+  '<p class="hint">Launch price is announced when Premium goes live.</p>'+
+  (joined?'<p style="color:var(--quiet);font-weight:800;">\u2705 You are on the founding member list.</p>'
+   :'<button class="btn btn-accent" id="waitBtn">Join the founding member waitlist</button>')+'</div>';
+ h+='<p class="hint">Premium launches as the community grows. Everything that is free today stays free.</p></div></div>';
+ document.body.insertAdjacentHTML('beforeend',h);
+ document.getElementById('premClose').onclick=()=>{const e=document.getElementById('premOv');if(e)e.remove();};
+ const wb=document.getElementById('waitBtn');
+ if(wb) wb.onclick=async()=>{
+  wb.disabled=true;wb.textContent='Joining...';
+  try{localStorage.setItem('sgt_prem_wait','1');}catch(e){}
+  if(firestore){try{await firestore.collection('premium_waitlist').add({userId:myId,createdAt:Date.now()});}catch(e){}}
+  openPremium();
+ };
+}
+
 function wireList(){
  root.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{typeFilter=b.dataset.filter;render();});
  const sb=document.getElementById('searchBox');
@@ -402,15 +447,16 @@ function renderDetailOverlay(){
   (hereN?'<p class="hint"><b style="color:var(--quiet)">'+hereN+' here now</b></p>':'<p class="hint">No recent check-ins.</p>')+
   '<div class="cong-row">'+['quiet','mod','packed'].map(l=>'<button class="'+l+'" data-checkin="'+l+'">'+(l==='mod'?'Moderate':l[0].toUpperCase()+l.slice(1))+'</button>').join('')+'</div></div>';
 
- const upcoming=detailRuns.filter(r=>Date.now()-(r.createdAt||0)<48*3600*1000);
+ const upcoming=detailRuns.filter(r=>Date.now()-(r.createdAt||0)<48*3600*1000).sort((a,b)=>((b.featured?1:0)-(a.featured?1:0))||((b.createdAt||0)-(a.createdAt||0)));
  h+='<div class="section"><h3>Upcoming runs</h3>'+
   (upcoming.length?upcoming.map(r=>{
    const going=(r.attendees||[]).length,mine=(r.attendees||[]).includes(myId);
-   return '<div class="comment"><div class="who">'+esc(r.when||'Run')+'</div>'+
+   return '<div class="comment'+(r.featured?' runfeat':'')+'"><div class="who">'+esc(r.when||'Run')+(r.featured?' <span class="premtag">FEATURED</span>':'')+'</div>'+
     '<div class="tx">'+going+' going &middot; posted '+timeAgo(r.createdAt)+'</div>'+
     '<button class="btn btn-outline" data-run="'+r.id+'" style="margin-top:8px;padding:9px;">'+(mine?"I'm out":"I'm in")+'</button></div>';
   }).join(''):'<p class="hint">No runs posted yet. Start one!</p>')+
   '<label>Post a run</label><input type="text" id="runWhen" placeholder="e.g. Tonight 6pm, Sat 9am" autocomplete="off">'+
+  '<div class="featrow" id="featRow"><input type="checkbox" id="runFeat"'+(canFeature()?'':' disabled')+'> <span>\uD83D\uDCCC Feature this run</span>'+(canFeature()?'':' <span class="premtag">PREMIUM</span>')+'</div>'+
   '<button class="btn btn-accent" id="postRunBtn">Post run</button></div>';
 
  h+='<div class="section"><h3>Ratings</h3>'+CATS.map(([k,label])=>{
@@ -482,16 +528,19 @@ function renderDetailOverlay(){
   renderDetailOverlay();
   if(firestore){try{await firestore.collection('ratings').doc(c.id+'_'+myId).set(base);}catch(e){}}
  });
+ const fr0=document.getElementById('featRow');
+ if(fr0) fr0.addEventListener('click',e=>{if(!canFeature()){e.preventDefault();openPremium();}});
  document.getElementById('postRunBtn').onclick=async()=>{
   const w=document.getElementById('runWhen').value.trim();
   if(!w) return document.getElementById('runWhen').focus();
   const btn=document.getElementById('postRunBtn');btn.disabled=true;btn.textContent='Posting...';
-  const run={id:'local_'+Date.now(),courtId:c.id,when:w,createdAt:Date.now(),createdBy:myId,attendees:[myId]};
+  const canF=canFeature();const fbox=document.getElementById('runFeat');
+  const run={id:'local_'+Date.now(),courtId:c.id,when:w,createdAt:Date.now(),createdBy:myId,attendees:[myId],featured:canF&&!!(fbox&&fbox.checked)};
   detailRuns=[run,...detailRuns];
   try{localStorage.setItem('sgt_runs_'+c.id,JSON.stringify(detailRuns));}catch(e){}
   renderDetailOverlay();
   if(firestore){try{
-   const d=await firestore.collection('runs').add({courtId:run.courtId,when:run.when,createdAt:run.createdAt,createdBy:run.createdBy,attendees:run.attendees});
+   const d=await firestore.collection('runs').add({courtId:run.courtId,when:run.when,createdAt:run.createdAt,createdBy:run.createdBy,attendees:run.attendees,featured:run.featured});
    run.id=d.id;try{localStorage.setItem('sgt_runs_'+c.id,JSON.stringify(detailRuns));}catch(e){}
    renderDetailOverlay();
   }catch(e){}}
