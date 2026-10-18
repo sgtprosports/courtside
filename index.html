@@ -13,6 +13,9 @@
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <style>
 :root{--bg:#0B2545;--surface:#13315C;--surface2:#1D4ED8;--border:#1E40AF;--text:#F2F3F5;--dim:#94A3B8;
 --accent:#EF233C;--accent-dim:#D90429;--quiet:#34C77B;--mod:#F2B705;--packed:#E5484D;color-scheme:dark;}
@@ -461,7 +464,10 @@ function renderDetailOverlay(){
  };
  root.querySelectorAll('[data-checkin]').forEach(b=>b.onclick=async()=>{
   const level=b.dataset.checkin;
+  try{const lastCd=parseInt(localStorage.getItem('sgt_checkin_cd_'+c.id)||'0',10);
+  if(Date.now()-lastCd<10*60*1000) return alert('You already checked in at this court recently. Give it a few minutes.');}catch(e){}
   const ch={courtId:c.id,level,createdAt:Date.now(),userId:myId};
+  try{localStorage.setItem('sgt_checkin_cd_'+c.id,String(Date.now()));}catch(e){}
   checkins=[ch,...checkins];
   localStorage.setItem('sgt_checkins_'+c.id,JSON.stringify(checkins));
   renderDetailOverlay();
@@ -500,7 +506,10 @@ function renderDetailOverlay(){
  });
  document.getElementById('postCommentBtn').onclick=async()=>{
   const t=document.getElementById('commentText').value.trim(); if(!t) return;
-  const cm={courtId:c.id,userId:myId,name:'You',text:t,createdAt:Date.now()};
+  try{const lastCm=parseInt(localStorage.getItem('sgt_comment_cd_'+c.id)||'0',10);
+  if(Date.now()-lastCm<60*1000) return alert('Slow down — one comment per minute.');}catch(e){}
+  const cm={courtId:c.id,userId:myId,name:'You',text:t.slice(0,500),createdAt:Date.now()};
+  try{localStorage.setItem('sgt_comment_cd_'+c.id,String(Date.now()));}catch(e){}
   comments=[cm,...comments];
   localStorage.setItem('sgt_comments_'+c.id,JSON.stringify(comments));
   renderDetailOverlay();
@@ -555,9 +564,13 @@ function renderEditInfo(){
    address:document.getElementById('eAddr').value.trim(),
    entryFee:document.getElementById('eFee').value.trim(),
    entryReq:document.getElementById('eIdReq').value.trim()};
-  Object.assign(c,upd);
+  const hist=Array.isArray(c.history)?c.history.slice(-19):[];
+  const prev={at:Date.now(),by:myId};
+  ['name','type','hours','hoursDetail','address','entryFee','entryReq'].forEach(k=>{prev[k]=(c[k]!==undefined&&c[k]!==null)?c[k]:'';});
+  hist.push(prev);
+  Object.assign(c,upd); c.history=hist;
   localStorage.setItem('sgt_courts',JSON.stringify(courts));
-  if(firestore){try{await firestore.collection('courts').doc(c.id).update(upd);}catch(e){}}
+  if(firestore){try{await firestore.collection('courts').doc(c.id).update(Object.assign({},upd,{history:hist}));}catch(e){}}
   const e=document.getElementById('editOv'); if(e) e.remove();
   renderDetailOverlay();
  };
@@ -570,9 +583,11 @@ function initMap(){
  const ctr=myLoc?[myLoc.lat,myLoc.lng]:[20,0],z=myLoc?12:2;
  mapView=L.map('map').setView(ctr,z);
  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(mapView);
+ const pins=(typeof L.markerClusterGroup!=='undefined')?L.markerClusterGroup():L.layerGroup();
  courts.filter(c=>c.lat!=null&&c.lng!=null).forEach(c=>{
-  L.marker([c.lat,c.lng]).addTo(mapView).bindPopup('<b>'+esc(c.name)+'</b><br><button data-mopen="'+c.id+'" style="margin-top:6px;padding:7px 12px;border-radius:8px;border:none;background:#EF233C;color:#fff;font-weight:700;font-size:13px;">View court</button>');
+  pins.addLayer(L.marker([c.lat,c.lng]).bindPopup('<b>'+esc(c.name)+'</b><br><button data-mopen="'+c.id+'" style="margin-top:6px;padding:7px 12px;border-radius:8px;border:none;background:#EF233C;color:#fff;font-weight:700;font-size:13px;">View court</button>'));
  });
+ pins.addTo(mapView);
  mapView.on('popupopen',e=>{const b=e.popup.getElement().querySelector('[data-mopen]');if(b)b.onclick=()=>openDetail(b.dataset.mopen);});
  setTimeout(()=>{try{mapView.invalidateSize();}catch(e){}},80);
 }
