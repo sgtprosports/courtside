@@ -292,7 +292,7 @@ function renderMap(){
 
 function renderAdd(){
  let s='<label>Court location</label>';
- s+=newCourtLoc?('<p class="hint">Captured: '+newCourtLoc.lat.toFixed(5)+', '+newCourtLoc.lng.toFixed(5)+'</p>'):'<p class="hint">Stand at the court and capture GPS.</p>';
+ s+=newCourtLoc?('<p class="hint">Captured: '+newCourtLoc.lat.toFixed(5)+', '+newCourtLoc.lng.toFixed(5)+'</p>'):'<p class="hint">Stand at the court and capture GPS — or just enter the address below and the pin will be placed automatically.</p>';
  s+='<button type="button" class="btn btn-outline" id="captureBtn">'+ICONS.pin+' '+(newCourtLoc?'Recapture Location':'Capture My Location')+'</button>';
  s+='<label>Court name *</label><input type="text" id="fName" placeholder="e.g. Memorial Park Courts">';
  s+='<label>Type</label><div class="seg"><button data-type="outdoor" class="typeBtn active">Outdoor</button><button data-type="indoor" class="typeBtn">Indoor</button></div>';
@@ -325,10 +325,21 @@ function wireAdd(){
   const name=document.getElementById('fName').value.trim();
   if(!name) return document.getElementById('fName').focus();
   const btn=document.getElementById('saveCourtBtn'); btn.disabled=true; btn.textContent='Adding...';
+  const addr=document.getElementById('fAddr').value.trim();
+  let loc=newCourtLoc;
+  if(!loc&&addr){
+   btn.textContent='Locating address...';
+   try{
+    const gr=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(addr));
+    const gj=await gr.json();
+    if(gj&&gj.length) loc={lat:parseFloat(gj[0].lat),lng:parseFloat(gj[0].lon)};
+   }catch(e){}
+   btn.textContent='Adding...';
+  }
   const newC={id:String(Date.now()),name,type:addType,hours:document.getElementById('fHours').value.trim(),
    hoursDetail:document.getElementById('fHoursDetail').value.trim(),
    entryFee:document.getElementById('fFee').value.trim(),entryReq:document.getElementById('fIdReq').value.trim(),
-   address:document.getElementById('fAddr').value.trim(),lat:newCourtLoc?newCourtLoc.lat:null,lng:newCourtLoc?newCourtLoc.lng:null};
+   address:addr,lat:loc?loc.lat:null,lng:loc?loc.lng:null};
   
   courts.push(newC);
   localStorage.setItem('sgt_courts',JSON.stringify(courts));
