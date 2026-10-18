@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>CourtSide — Reports</title>
+<style>
+:root{--bg:#0B2545;--surface:#13315C;--border:#1E40AF;--text:#F2F3F5;--dim:#94A3B8;--accent:#EF233C;color-scheme:dark;}
+*{box-sizing:border-box;}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;min-height:100%;}
+.wrap{max-width:640px;margin:0 auto;padding:20px 16px 40px;}
+h1{font-size:22px;margin:0 0 4px;}
+.sub{color:var(--dim);font-size:13px;margin:0 0 16px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px;}
+.card .court{font-weight:800;font-size:16px;margin-bottom:6px;}
+.card .court a{color:var(--text);text-decoration:none;}
+.card .reason{font-size:14px;line-height:1.45;margin-bottom:8px;white-space:pre-wrap;}
+.card .meta{color:var(--dim);font-size:12px;margin-bottom:10px;}
+.row{display:flex;gap:8px;}
+.btn{flex:1;padding:10px;border-radius:10px;border:none;font-weight:700;font-size:14px;cursor:pointer;}
+.btn-view{background:#1D4ED8;color:#fff;}
+.btn-dismiss{background:transparent;color:var(--dim);border:1px solid var(--border);}
+.btn-refresh{background:var(--accent);color:#fff;padding:10px 18px;margin-bottom:16px;}
+.center{text-align:center;color:var(--dim);padding:40px 0;}
+.err{color:#ff8a8a;}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Reported problems</h1>
+<p class="sub">Unlisted moderation page for CourtSide. Dismissed reports are deleted permanently.</p>
+<button class="btn btn-refresh" id="refreshBtn" style="flex:none;">Refresh</button>
+<div id="list"><div class="center">Loading…</div></div>
+</div>
+<script>
+const BASE='https://firestore.googleapis.com/v1/projects/sgtcourtside/databases/(default)/documents';
+const v=f=>{if(!f)return '';if(f.stringValue!==undefined)return f.stringValue;if(f.integerValue!==undefined)return f.integerValue;return '';};
+function ago(ts){ts=parseInt(ts,10)||0;const s=Math.floor((Date.now()-ts)/1000);if(s<60)return s+'s ago';const m=Math.floor(s/60);if(m<60)return m+'m ago';const h=Math.floor(m/60);if(h<24)return h+'h ago';const d=Math.floor(h/24);return d+'d ago';}
+async function load(){
+ const list=document.getElementById('list');
+ list.innerHTML='<div class="center">Loading…</div>';
+ try{
+  const r=await fetch(BASE+'/reports?pageSize=100');
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  const j=await r.json();
+  const docs=(j.documents||[]).map(d=>{const f=d.fields||{};return{id:d.name.split('/').pop(),courtId:v(f.courtId),courtName:v(f.courtName)||'(unknown court)',reason:v(f.reason),createdAt:v(f.createdAt)};});
+  docs.sort((a,b)=>(parseInt(b.createdAt,10)||0)-(parseInt(a.createdAt,10)||0));
+  if(!docs.length){list.innerHTML='<div class="center">No reports. All clear.</div>';return;}
+  list.innerHTML=docs.map(d=>
+   '<div class="card" id="rep-'+d.id+'">'+
+   '<div class="court"><a href="./#court='+encodeURIComponent(d.courtId)+'">'+escapeHtml(d.courtName)+'</a></div>'+
+   '<div class="reason">'+escapeHtml(d.reason)+'</div>'+
+   '<div class="meta">'+ago(d.createdAt)+'</div>'+
+   '<div class="row"><button class="btn btn-view" onclick="location.href=\'./#court='+encodeURIComponent(d.courtId)+'\'">View court</button>'+
+   '<button class="btn btn-dismiss" onclick="dismissReport(\''+d.id+'\')">Dismiss</button></div></div>'
+  ).join('');
+ }catch(e){list.innerHTML='<div class="center err">Could not load reports: '+escapeHtml(e.message)+'</div>';}
+}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+async function dismissReport(id){
+ if(!confirm('Dismiss this report? It will be deleted.'))return;
+ try{
+  const r=await fetch(BASE+'/reports/'+encodeURIComponent(id),{method:'DELETE'});
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  const el=document.getElementById('rep-'+id); if(el) el.remove();
+  if(!document.querySelector('.card')) document.getElementById('list').innerHTML='<div class="center">No reports. All clear.</div>';
+ }catch(e){alert('Could not dismiss: '+e.message);}
+}
+document.getElementById('refreshBtn').onclick=load;
+load();
+</script>
+</body>
+</html>
