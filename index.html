@@ -11,6 +11,8 @@
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
 <!-- Firebase Firestore -->
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 :root{--bg:#0B2545;--surface:#13315C;--surface2:#1D4ED8;--border:#1E40AF;--text:#F2F3F5;--dim:#94A3B8;
 --accent:#EF233C;--accent-dim:#D90429;--quiet:#34C77B;--mod:#F2B705;--packed:#E5484D;color-scheme:dark;}
@@ -96,6 +98,9 @@ input:focus{outline:none;border-color:var(--accent);}
 .comment .tx{font-size:13.5px;margin-top:2px;line-height:1.4;}
 textarea{width:100%;padding:10px 12px;border-radius:10px;border:1.5px solid var(--border);
  background:var(--surface);color:var(--text);font-size:14px;resize:vertical;min-height:60px;font-family:inherit;}
+#map{height:calc(100dvh - 235px);min-height:300px;border-radius:14px;z-index:1;background:#0e2a52;}
+.leaflet-container{font-family:inherit;border-radius:14px;}
+.newdot{display:inline-block;background:var(--accent);color:#fff;font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;margin-left:6px;vertical-align:middle;}
 </style>
 </head>
 <body>
@@ -108,7 +113,9 @@ const ICONS={
  heartFill:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.8 1-1a5.5 5.5 0 0 0 0-7.6z"/></svg>',
  star:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.9L12 17.8 5.8 21l1.2-6.9-5-4.9 6.9-1z"/></svg>',
  x:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>',
- cam:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>'
+ cam:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>',
+ share:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>',
+ map:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>'
 };
 const CATS=[['floor','Floor'],['rim','Rim'],['net','Net'],['temp','Temperature'],['level','Level of Play'],
  ['lighting','Lighting'],['parking','Parking'],['vibe','Crowd Vibe']];
@@ -123,7 +130,8 @@ function timeAgo(ts){const m=Math.floor((Date.now()-ts)/60000);if(m<1)return'jus
 
 let db=null,firestore=null,myId='user_'+Math.random().toString(36).substring(2,9);
 let view='nearby',courts=[],myLoc=null,typeFilter='all',favIds={};
-let detailId=null,detailRatings=[],myRating=null,comments=[],media=[],checkins=[];
+let detailId=null,detailRatings=[],myRating=null,comments=[],media=[],checkins=[],detailRuns=[];
+let searchQ='',mapView=null;
 let newCourtLoc=null;
 
 const root=document.getElementById('app');
@@ -157,6 +165,7 @@ async function init(){
   firestore.collection('courts').onSnapshot(snap=>{
    courts=snap.docs.map(d=>({id:d.id,...d.data()}));
    render();
+   openHashCourt();
   },()=>{
    loadLocalCourts();
   });
@@ -170,26 +179,36 @@ function loadLocalCourts(){
  const savedCourts=localStorage.getItem('sgt_courts');
  courts=savedCourts?JSON.parse(savedCourts):[];
  render();
+ openHashCourt();
 }
 
-function setView(v){view=v;detailId=null;render();}
+function openHashCourt(){
+ const m=/^#court=([\w-]+)/.exec(location.hash||'');
+ if(m&&!detailId&&courts.some(c=>c.id===m[1])) openDetail(m[1]);
+}
+
+function setView(v){view=v;detailId=null;try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}render();}
 
 async function openDetail(id){
- detailId=id; myRating=null; detailRatings=[]; comments=[]; media=[]; checkins=[];
+ detailId=id; myRating=null; detailRatings=[]; comments=[]; media=[]; checkins=[]; detailRuns=[];
+ try{localStorage.setItem('sgt_seen_'+id,String(Date.now()));}catch(e){}
+ try{history.replaceState(null,'','#court='+id);}catch(e){}
  render();
 
  if(firestore){
   try{
-   const [rs,cs,ms,chs]=await Promise.all([
+   const [rs,cs,ms,chs,rns]=await Promise.all([
     firestore.collection('ratings').where('courtId','==',id).get(),
     firestore.collection('comments').where('courtId','==',id).orderBy('createdAt','desc').limit(30).get(),
     firestore.collection('media').where('courtId','==',id).orderBy('createdAt','desc').limit(12).get(),
-    firestore.collection('checkins').where('courtId','==',id).orderBy('createdAt','desc').limit(1).get()
+    firestore.collection('checkins').where('courtId','==',id).orderBy('createdAt','desc').limit(50).get(),
+    firestore.collection('runs').where('courtId','==',id).orderBy('createdAt','desc').limit(20).get()
    ]);
    detailRatings=rs.docs.map(d=>d.data());
    comments=cs.docs.map(d=>({id:d.id,...d.data()}));
    media=ms.docs.map(d=>d.data());
    checkins=chs.docs.map(d=>d.data());
+   detailRuns=rns.docs.map(d=>({id:d.id,...d.data()}));
    if(myId) myRating=detailRatings.find(r=>r.userId===myId)||null;
    render();
    return;
@@ -204,6 +223,8 @@ async function openDetail(id){
  if(savedMedia) media=JSON.parse(savedMedia);
  const savedCheckins=localStorage.getItem('sgt_checkins_'+id);
  if(savedCheckins) checkins=JSON.parse(savedCheckins);
+ const savedRuns=localStorage.getItem('sgt_runs_'+id);
+ if(savedRuns) detailRuns=JSON.parse(savedRuns);
  if(myId) myRating=detailRatings.find(r=>r.userId===myId)||null;
  render();
 }
@@ -212,35 +233,48 @@ function render(){
  let html='<div class="topbar"><div style="width:36px;height:42px;display:flex;align-items:center;justify-content:center;">' +
   '<svg viewBox="0 0 500 600" width="32" height="38"><path d="M 250 30 C 350 30 430 50 450 70 L 450 280 C 450 380 370 480 250 560 C 130 480 50 380 50 280 L 50 70 C 70 50 150 30 250 30 Z" fill="#0B2545" stroke="#FFFFFF" stroke-width="8"/><rect x="175" y="85" width="150" height="100" rx="6" fill="none" stroke="#FFFFFF" stroke-width="4"/><ellipse cx="250" cy="205" rx="65" ry="18" fill="none" stroke="#EF233C" stroke-width="10"/><circle cx="250" cy="355" r="90" fill="#E85D04"/><line x1="160" y1="355" x2="340" y2="355" stroke="#2B0900" stroke-width="4"/></svg>' +
   '</div><div><h1>COURTSIDE</h1><p>'+
-  (view==='nearby'?'Find courts near you':view==='add'?'Add a court you know':'Your saved courts')+'</p></div></div>'+
+  (view==='nearby'?'Find courts near you':view==='map'?'Browse the map':view==='add'?'Add a court you know':'Your saved courts')+'</p></div></div>'+
   '<div class="content">';
- if(view==='nearby') html+=renderList(courts);
+ if(view==='nearby') html+=renderList();
+ else if(view==='map') html+=renderMap();
  else if(view==='add') html+=renderAdd();
- else html+=renderList(courts.filter(c=>favIds[c.id]));
+ else html+=renderList();
  html+='</div>'+renderTabbar();
+ if(mapView){try{mapView.remove();}catch(e){} mapView=null;}
  root.innerHTML=html;
  wireCommon();
  if(view==='add') wireAdd();
- else wireList();
+ else if(view==='map') initMap();
+ else {wireList(); if(view==='favorites') refreshFavBadges();}
  if(detailId) renderDetailOverlay();
 }
 
 function renderTabbar(){
- const tabs=[['nearby','pin','Nearby'],['add','plus','Add Court'],['favorites','heart','Favorites']];
+ const tabs=[['nearby','pin','Nearby'],['map','map','Map'],['add','plus','Add Court'],['favorites','heart','Favorites']];
  return '<div class="tabbar">'+tabs.map(t=>'<button class="tabbtn'+(view===t[0]?' active':'')+'" data-tab="'+t[0]+'">'+ICONS[t[1]]+'<span>'+t[2]+'</span></button>').join('')+'</div>';
 }
 
-function renderList(list){
- let s='<div class="chips">'+['all','indoor','outdoor'].map(f=>'<button class="chip'+(typeFilter===f?' active':'')+'" data-filter="'+f+'">'+f[0].toUpperCase()+f.slice(1)+'</button>').join('')+'</div>';
- let items=list.filter(c=>typeFilter==='all'||c.type===typeFilter);
+function currentList(){return view==='favorites'?courts.filter(c=>favIds[c.id]):courts;}
+function cardsHTML(){
+ let items=currentList().filter(c=>typeFilter==='all'||c.type===typeFilter);
+ if(view==='nearby'&&searchQ){const q=searchQ.toLowerCase();items=items.filter(c=>((c.name||'')+' '+(c.address||'')).toLowerCase().includes(q));}
  if(myLoc) items=items.map(c=>({...c,_d:(c.lat!=null?dist(myLoc.lat,myLoc.lng,c.lat,c.lng):null)})).sort((a,b)=>(a._d??9e9)-(b._d??9e9));
- if(!items.length) return s+'<div class="empty">'+(view==='favorites'?'No favorites yet. Tap the heart on a court to save it.':'No courts found yet. Add the first one!')+'</div>';
- return s+items.map(c=>{
+ if(!items.length) return '<div class="empty">'+(view==='favorites'?'No favorites yet. Tap the heart on a court to save it.':'No courts found yet. Add the first one!')+'</div>';
+ return items.map(c=>{
   return '<div class="ccard" data-open="'+c.id+'"><div class="top"><div><div class="nm">'+esc(c.name)+'</div>'+
    '<div class="meta">'+(c._d!=null?c._d.toFixed(1)+' mi · ':'')+esc(c.hours||'Hours not listed')+'</div></div>'+
    '<span class="badge '+c.type+'">'+c.type+'</span></div>'+
    '<div class="row-between"><span class="cong none">No recent reports</span></div></div>';
  }).join('');
+}
+function renderList(){
+ let s='<div class="chips">'+['all','indoor','outdoor'].map(f=>'<button class="chip'+(typeFilter===f?' active':'')+'" data-filter="'+f+'">'+f[0].toUpperCase()+f.slice(1)+'</button>').join('')+'</div>';
+ if(view==='nearby') s+='<input type="text" id="searchBox" placeholder="Search courts or cities..." value="'+esc(searchQ)+'" style="margin-bottom:10px;" autocomplete="off">';
+ s+='<div id="courtList">'+cardsHTML()+'</div>';
+ return s;
+}
+function renderMap(){
+ return '<div id="map"></div><p class="hint" style="margin-top:8px;">Tap a pin to preview a court.</p>';
 }
 
 function renderAdd(){
@@ -261,8 +295,11 @@ function renderAdd(){
 function wireCommon(){root.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>setView(b.dataset.tab));}
 function wireList(){
  root.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{typeFilter=b.dataset.filter;render();});
- root.querySelectorAll('[data-open]').forEach(el=>el.onclick=()=>openDetail(el.dataset.open));
+ const sb=document.getElementById('searchBox');
+ if(sb) sb.oninput=()=>{searchQ=sb.value;const cl=document.getElementById('courtList');if(cl){cl.innerHTML=cardsHTML();wireCards();}};
+ wireCards();
 }
+function wireCards(){root.querySelectorAll('[data-open]').forEach(el=>el.onclick=()=>openDetail(el.dataset.open));}
 let addType='outdoor';
 function wireAdd(){
  document.getElementById('captureBtn').onclick=()=>{
@@ -307,6 +344,7 @@ function renderDetailOverlay(){
   '<div style="display:flex;gap:8px;margin-top:12px;">'+
   (mapsUrl?('<a href="'+mapsUrl+'" target="_blank" class="fav-btn">'+ICONS.pin+' Directions</a>'):'')+
   '<button class="fav-btn'+(isFav?' on':'')+'" id="favBtn">'+(isFav?ICONS.heartFill:ICONS.heart)+(isFav?' Saved':' Save')+'</button>'+
+  '<button class="fav-btn" id="shareBtn">'+ICONS.share+' Share</button>'+
   '</div></div><div class="ov-body">';
 
  h+='<div class="hours-section" style="background: rgba(255,255,255,0.05); padding: 16px; border-radius: 12px; margin-bottom: 16px;">'+
@@ -330,6 +368,24 @@ function renderDetailOverlay(){
       : '<p class="hint">Not listed yet &mdash; be the first to add it.</p>')+
  '</div>';
 
+ const nowT=Date.now();
+ const recent=checkins.filter(ch=>nowT-(ch.createdAt||0)<2*3600*1000);
+ const hereN=new Set(recent.map(ch=>String(ch.userId))).size;
+ h+='<div class="section"><h3>Right Now</h3>'+
+  (hereN?'<p class="hint"><b style="color:var(--quiet)">'+hereN+' here now</b></p>':'<p class="hint">No recent check-ins.</p>')+
+  '<div class="cong-row">'+['quiet','mod','packed'].map(l=>'<button class="'+l+'" data-checkin="'+l+'">'+(l==='mod'?'Moderate':l[0].toUpperCase()+l.slice(1))+'</button>').join('')+'</div></div>';
+
+ const upcoming=detailRuns.filter(r=>Date.now()-(r.createdAt||0)<48*3600*1000);
+ h+='<div class="section"><h3>Upcoming runs</h3>'+
+  (upcoming.length?upcoming.map(r=>{
+   const going=(r.attendees||[]).length,mine=(r.attendees||[]).includes(myId);
+   return '<div class="comment"><div class="who">'+esc(r.when||'Run')+'</div>'+
+    '<div class="tx">'+going+' going &middot; posted '+timeAgo(r.createdAt)+'</div>'+
+    '<button class="btn btn-outline" data-run="'+r.id+'" style="margin-top:8px;padding:9px;">'+(mine?"I'm out":"I'm in")+'</button></div>';
+  }).join(''):'<p class="hint">No runs posted yet. Start one!</p>')+
+  '<label>Post a run</label><input type="text" id="runWhen" placeholder="e.g. Tonight 6pm, Sat 9am" autocomplete="off">'+
+  '<button class="btn btn-accent" id="postRunBtn">Post run</button></div>';
+
  h+='<div class="section"><h3>Ratings</h3>'+CATS.map(([k,label])=>{
   const avg=avgFor(k), mine=myRating?(myRating[k]||0):0;
   return '<div class="ratecat"><div><div class="cn">'+label+'</div><div class="avg">'+(avg?avg.toFixed(1)+' avg · '+detailRatings.length+' ratings':'No ratings yet')+'</div></div>'+
@@ -346,28 +402,38 @@ function renderDetailOverlay(){
 
  h+='<div class="section"><button class="btn btn-outline" id="editInfoBtn">Edit court info</button></div>';
 
- h+='<div class="section"><button class="btn btn-danger" id="deleteCourtBtn">Delete Court</button></div>';
+ h+='<div class="section"><button class="btn btn-outline" id="reportBtn">Report a problem</button><div id="reportWrap"></div></div>';
 
  h+='</div></div>';
  root.insertAdjacentHTML('beforeend',h);
- document.getElementById('ovClose').onclick=()=>{detailId=null;document.getElementById('detailOv').remove();};
+ document.getElementById('ovClose').onclick=()=>{detailId=null;document.getElementById('detailOv').remove();try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}};
  document.getElementById('favBtn').onclick=async()=>{
   favIds={...favIds}; if(favIds[c.id]) delete favIds[c.id]; else favIds[c.id]=true;
   localStorage.setItem('sgt_favs',JSON.stringify(favIds));
   renderDetailOverlay();
  };
+ document.getElementById('shareBtn').onclick=async()=>{
+  const url=location.origin+location.pathname+'#court='+c.id;
+  const btn=document.getElementById('shareBtn');
+  try{await navigator.clipboard.writeText(url);}
+  catch(e){prompt('Copy this link:',url);return;}
+  const old=btn.innerHTML;btn.innerHTML='Copied!';
+  setTimeout(()=>{const b2=document.getElementById('shareBtn');if(b2)b2.innerHTML=old;},1500);
+ };
  document.getElementById('editInfoBtn').onclick=()=>renderEditInfo();
- document.getElementById('deleteCourtBtn').onclick=async()=>{
-  if(!confirm('Are you sure you want to delete this court?')) return;
-  courts=courts.filter(x=>x.id!==c.id);
-  localStorage.setItem('sgt_courts',JSON.stringify(courts));
-  localStorage.removeItem('sgt_ratings_'+c.id);
-  localStorage.removeItem('sgt_comments_'+c.id);
-  localStorage.removeItem('sgt_media_'+c.id);
-  localStorage.removeItem('sgt_checkins_'+c.id);
-  if(firestore){try{await firestore.collection('courts').doc(c.id).delete();}catch(e){}}
-  detailId=null;
-  render();
+ document.getElementById('reportBtn').onclick=()=>{
+  const w=document.getElementById('reportWrap');
+  w.innerHTML='<label>What is wrong?</label><textarea id="reportText" placeholder="e.g. Duplicate court, wrong location, permanently closed..."></textarea>'+
+   '<div style="display:flex;gap:8px;"><button class="btn btn-accent" id="reportSend" style="flex:1;">Send report</button>'+
+   '<button class="btn btn-outline" id="reportCancel" style="flex:1;">Cancel</button></div>';
+  document.getElementById('reportCancel').onclick=()=>{w.innerHTML='';};
+  document.getElementById('reportSend').onclick=async()=>{
+   const t=document.getElementById('reportText').value.trim();
+   if(!t) return document.getElementById('reportText').focus();
+   const b=document.getElementById('reportSend');b.disabled=true;b.textContent='Sending...';
+   if(firestore){try{await firestore.collection('reports').add({courtId:c.id,courtName:c.name,reason:t,createdAt:Date.now(),userId:myId});}catch(e){}}
+   w.innerHTML='<p class="hint">Thanks — your report was sent for review.</p>';
+  };
  };
  root.querySelectorAll('[data-checkin]').forEach(b=>b.onclick=async()=>{
   const level=b.dataset.checkin;
@@ -385,6 +451,28 @@ function renderDetailOverlay(){
   localStorage.setItem('sgt_ratings_'+c.id,JSON.stringify(detailRatings));
   renderDetailOverlay();
   if(firestore){try{await firestore.collection('ratings').doc(c.id+'_'+myId).set(base);}catch(e){}}
+ });
+ document.getElementById('postRunBtn').onclick=async()=>{
+  const w=document.getElementById('runWhen').value.trim();
+  if(!w) return document.getElementById('runWhen').focus();
+  const btn=document.getElementById('postRunBtn');btn.disabled=true;btn.textContent='Posting...';
+  const run={id:'local_'+Date.now(),courtId:c.id,when:w,createdAt:Date.now(),createdBy:myId,attendees:[myId]};
+  detailRuns=[run,...detailRuns];
+  try{localStorage.setItem('sgt_runs_'+c.id,JSON.stringify(detailRuns));}catch(e){}
+  renderDetailOverlay();
+  if(firestore){try{
+   const d=await firestore.collection('runs').add({courtId:run.courtId,when:run.when,createdAt:run.createdAt,createdBy:run.createdBy,attendees:run.attendees});
+   run.id=d.id;try{localStorage.setItem('sgt_runs_'+c.id,JSON.stringify(detailRuns));}catch(e){}
+   renderDetailOverlay();
+  }catch(e){}}
+ };
+ root.querySelectorAll('[data-run]').forEach(b=>b.onclick=async()=>{
+  const r=detailRuns.find(x=>String(x.id)===b.dataset.run); if(!r) return;
+  const at=r.attendees||[];
+  r.attendees=at.includes(myId)?at.filter(u=>u!==myId):[...at,myId];
+  try{localStorage.setItem('sgt_runs_'+c.id,JSON.stringify(detailRuns));}catch(e){}
+  renderDetailOverlay();
+  if(firestore&&r.id&&String(r.id).indexOf('local_')!==0){try{await firestore.collection('runs').doc(r.id).update({attendees:r.attendees});}catch(e){}}
  });
  document.getElementById('postCommentBtn').onclick=async()=>{
   const t=document.getElementById('commentText').value.trim(); if(!t) return;
@@ -449,6 +537,41 @@ function renderEditInfo(){
   const e=document.getElementById('editOv'); if(e) e.remove();
   renderDetailOverlay();
  };
+}
+
+function initMap(){
+ const el=document.getElementById('map');
+ if(!el) return;
+ if(typeof L==='undefined'){el.innerHTML='<p class="hint">Map could not load. Check your connection.</p>';return;}
+ const ctr=myLoc?[myLoc.lat,myLoc.lng]:[20,0],z=myLoc?12:2;
+ mapView=L.map('map').setView(ctr,z);
+ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(mapView);
+ courts.filter(c=>c.lat!=null&&c.lng!=null).forEach(c=>{
+  L.marker([c.lat,c.lng]).addTo(mapView).bindPopup('<b>'+esc(c.name)+'</b><br><button data-mopen="'+c.id+'" style="margin-top:6px;padding:7px 12px;border-radius:8px;border:none;background:#EF233C;color:#fff;font-weight:700;font-size:13px;">View court</button>');
+ });
+ mapView.on('popupopen',e=>{const b=e.popup.getElement().querySelector('[data-mopen]');if(b)b.onclick=()=>openDetail(b.dataset.mopen);});
+ setTimeout(()=>{try{mapView.invalidateSize();}catch(e){}},80);
+}
+async function refreshFavBadges(){
+ if(!firestore||view!=='favorites') return;
+ const ids=Object.keys(favIds).slice(0,8); if(!ids.length) return;
+ const latest={};
+ try{
+  const qs=await Promise.all(ids.map(id=>Promise.all([
+   firestore.collection('checkins').where('courtId','==',id).orderBy('createdAt','desc').limit(1).get(),
+   firestore.collection('comments').where('courtId','==',id).orderBy('createdAt','desc').limit(1).get(),
+   firestore.collection('runs').where('courtId','==',id).orderBy('createdAt','desc').limit(1).get()
+  ])));
+  qs.forEach(set=>set.forEach(snap=>snap.docs.forEach(d=>{const x=d.data();const t=x.createdAt||0;if(t>(latest[x.courtId]||0))latest[x.courtId]=t;})));
+ }catch(e){return;}
+ if(view!=='favorites') return;
+ ids.forEach(id=>{
+  const seen=parseInt(localStorage.getItem('sgt_seen_'+id)||'0',10);
+  if((latest[id]||0)>seen){
+   const nm=document.querySelector('[data-open="'+id+'"] .nm');
+   if(nm&&!nm.querySelector('.newdot')) nm.insertAdjacentHTML('beforeend','<span class="newdot">New</span>');
+  }
+ });
 }
 
 init();
