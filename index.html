@@ -79,6 +79,8 @@ input:focus{outline:none;border-color:var(--accent);}
 .cong.none{background:var(--surface2);color:var(--dim);}
 .stars{display:flex;gap:2px;}
 .stars svg{width:14px;height:14px;}
+button svg{width:18px;height:18px;}
+.fav-btn svg{width:16px;height:16px;vertical-align:-3px;}
 .row-between{display:flex;justify-content:space-between;align-items:center;margin-top:8px;}
 .ov{position:fixed;inset:0;background:var(--bg);z-index:40;overflow-y:auto;
  padding-top:env(safe-area-inset-top,0px);padding-bottom:calc(30px + env(safe-area-inset-bottom,0px));}
@@ -227,16 +229,17 @@ async function openDetail(id,noPush){
   try{
    const [rs,cs,ms,chs,rns]=await Promise.all([
     firestore.collection('ratings').where('courtId','==',id).get(),
-    firestore.collection('comments').where('courtId','==',id).orderBy('createdAt','desc').limit(30).get(),
-    firestore.collection('media').where('courtId','==',id).orderBy('createdAt','desc').limit(12).get(),
-    firestore.collection('checkins').where('courtId','==',id).orderBy('createdAt','desc').limit(50).get(),
-    firestore.collection('runs').where('courtId','==',id).orderBy('createdAt','desc').limit(20).get()
+    firestore.collection('comments').where('courtId','==',id).get(),
+    firestore.collection('media').where('courtId','==',id).get(),
+    firestore.collection('checkins').where('courtId','==',id).get(),
+    firestore.collection('runs').where('courtId','==',id).get()
    ]);
+   const byNew=(a,b)=>((b.createdAt||0)-(a.createdAt||0));
    detailRatings=rs.docs.map(d=>d.data());
-   comments=cs.docs.map(d=>({id:d.id,...d.data()}));
-   media=ms.docs.map(d=>d.data());
-   checkins=chs.docs.map(d=>d.data());
-   detailRuns=rns.docs.map(d=>({id:d.id,...d.data()}));
+   comments=cs.docs.map(d=>({id:d.id,...d.data()})).sort(byNew).slice(0,30);
+   media=ms.docs.map(d=>d.data()).sort(byNew).slice(0,12);
+   checkins=chs.docs.map(d=>d.data()).sort(byNew).slice(0,50);
+   detailRuns=rns.docs.map(d=>({id:d.id,...d.data()})).sort(byNew).slice(0,20);
    if(myId) myRating=detailRatings.find(r=>r.userId===myId)||null;
    render();
    return;
@@ -647,9 +650,9 @@ async function refreshFavBadges(){
  const latest={};
  try{
   const qs=await Promise.all(ids.map(id=>Promise.all([
-   firestore.collection('checkins').where('courtId','==',id).orderBy('createdAt','desc').limit(1).get(),
-   firestore.collection('comments').where('courtId','==',id).orderBy('createdAt','desc').limit(1).get(),
-   firestore.collection('runs').where('courtId','==',id).orderBy('createdAt','desc').limit(1).get()
+   firestore.collection('checkins').where('courtId','==',id).get(),
+   firestore.collection('comments').where('courtId','==',id).get(),
+   firestore.collection('runs').where('courtId','==',id).get()
   ])));
   qs.forEach(set=>set.forEach(snap=>snap.docs.forEach(d=>{const x=d.data();const t=x.createdAt||0;if(t>(latest[x.courtId]||0))latest[x.courtId]=t;})));
  }catch(e){return;}
